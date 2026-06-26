@@ -1,0 +1,31 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* 물류 앱은 다크 테마 고정 (PDA/모바일 최적화) */
+:root {
+  --background: oklch(0.08 0 0);
+  --foreground: oklch(0.985 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-white/10 outline-white/20;
+  }
+  body {
+    @apply bg-[var(--background)] text-[var(--foreground)];
+  }
+  button,
+  a,
+  [role="button"],
+  input[type="submit"],
+  input[type="button"],
+  select,
+  summary {
+    cursor: pointer;
+  }
+  button:disabled,
+  input:disabled,
+  select:disabled {
+    cursor: not-allowed;
+  }
+}

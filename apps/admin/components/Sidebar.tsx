@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Package, ClipboardList, Building2, FileText, ShoppingCart,
   Tags, FolderTree, Menu, X, ChevronDown, ExternalLink, ClipboardCheck, Settings, Wrench, Layers,
-  PanelLeftClose, PanelLeftOpen, LogOut, PackageCheck, Warehouse, Search, ShieldCheck, TrendingUp,
+  PanelLeftClose, PanelLeftOpen, LogOut, PackageCheck, Warehouse, Search, ShieldCheck, TrendingUp, Target,
 } from 'lucide-react';
 import InventoryFinderModal from '@/components/InventoryFinderModal';
 import { useMemo, useState, useTransition } from 'react';
@@ -51,8 +51,9 @@ const allNavGroups: NavGroup[] = [
     ],
   },
   {
-    label: '고객관리',
+    label: '고객관계',
     items: [
+      { href: '/deals', label: '영업 파이프라인', icon: Target },
       { href: '/warranty', label: '출고현황', icon: ShieldCheck },
       { href: '/as', label: 'A/S 관리', icon: Wrench },
     ],

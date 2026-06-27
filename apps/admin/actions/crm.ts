@@ -16,7 +16,7 @@ export async function logActivity(input: {
   memo?: string | null;
   companyId?: string | null; // 거래처 연결(선택, 호환)
   dueAt?: string | null;     // task 마감
-}) {
+}): Promise<{ error?: string; success?: boolean }> {
   const supabase = await createAdminClient();
   const workspaceId = await getCurrentWorkspaceId();
   const { data: { user } } = await (await createClient()).auth.getUser();
@@ -67,7 +67,7 @@ export async function addActivity(input: {
   action: string;
   memo?: string;
   dueAt?: string | null;
-}) {
+}): Promise<{ error?: string; success?: boolean }> {
   const result = await logActivity(input);
   if (result?.error) return result;
   revalidatePath(`/deals/${input.entityId}`);
@@ -76,7 +76,7 @@ export async function addActivity(input: {
 }
 
 // task 완료 토글 (팔로업 체크)
-export async function toggleActivityDone(id: string, done: boolean) {
+export async function toggleActivityDone(id: string, done: boolean): Promise<{ error?: string; success?: boolean }> {
   const supabase = await createAdminClient();
   const { error } = await supabase.from('crm_logs').update({ done }).eq('id', id);
   if (error) return { error: error.message };

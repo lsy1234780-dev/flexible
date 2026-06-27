@@ -17,6 +17,24 @@ export async function signIn(formData: FormData) {
   redirect('/products');
 }
 
+// 구글 OAuth 시작 — 비밀번호 없이 로그인 간소화.
+// flow='login'  : 기존 워크스페이스 멤버만 통과(초대제). 비멤버는 콜백에서 차단.
+// flow='signup' : 비멤버면 콜백이 /onboarding으로 보내 새 워크스페이스 생성.
+export async function signInWithGoogle(flow: 'login' | 'signup' = 'login') {
+  const supabase = await createClient();
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001';
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: `${appUrl}/auth/callback?flow=${flow}`,
+    },
+  });
+
+  if (error) return { error: error.message };
+  if (data.url) redirect(data.url); // 구글 동의 화면으로 이동
+}
+
 export async function signOut() {
   const supabase = await createClient();
   await supabase.auth.signOut();

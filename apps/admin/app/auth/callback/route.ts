@@ -4,14 +4,52 @@ import { createClient } from '@/lib/supabase/server';
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
-  const next = searchParams.get('next') ?? '/products';
+  const flow = searchParams.get('flow'); // 'login' | 'signup' | null(비번리셋 등)
+  const next = searchParams.get('next');
 
-  if (code) {
-    const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
+  if (!code) {
+    return NextResponse.redirect(`${origin}/login`);
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.exchangeCodeForSession(code);
+  if (error) {
+    return NextResponse.redirect(`${origin}/login`);
+  }
+
+  // 비밀번호 리셋 등 next가 명시된 흐름은 그대로 진행 (기존 동작 유지)
+  if (next) {
+    return NextResponse.redirect(`${origin}${next}`);
+  }
+
+  // OAuth 로그인/가입: 워크스페이스 멤버십으로 분기 (멀티테넌시 격리)
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    const { data: membership } = await supabase
+      .from('workspace_members')
+      .select('workspace_id')
+      .eq('user_id', user.id)
+      .limit(1)
+      .maybeSingle();
+
+    if (membership) {
+      // 기존 멤버 → 앱으로
+      return NextResponse.redirect(`${origin}/products`);
     }
+
+    // 워크스페이스 없음
+    if (flow === 'signup') {
+      // 회원가입 흐름 → 온보딩(새 워크스페이스 생성)으로
+      return NextResponse.redirect(`${origin}/onboarding`);
+    }
+
+    // 로그인 흐름의 비멤버 → 초대제 차단
+    await supabase.auth.signOut();
+    const msg = '초대받지 않은 계정입니다. 관리자에게 문의하거나 회원가입을 진행하세요.';
+    return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(msg)}`);
   }
 
   return NextResponse.redirect(`${origin}/login`);

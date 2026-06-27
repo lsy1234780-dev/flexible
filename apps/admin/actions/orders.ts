@@ -81,6 +81,9 @@ async function logCrm(
     order_id: orderId,
     action,
     memo: memo ?? null,
+    entity_type: 'company',
+    entity_id: companyId,
+    kind: 'system',
     workspace_id: await getCurrentWorkspaceId(),
   });
 }
@@ -565,6 +568,9 @@ export async function addCrmMemo(companyId: string, memo: string, orderId?: stri
     order_id: orderId ?? null,
     action: '메모',
     memo,
+    entity_type: 'company',
+    entity_id: companyId,
+    kind: 'note',
     workspace_id: await getCurrentWorkspaceId(),
   });
   if (error) return { error: error.message };

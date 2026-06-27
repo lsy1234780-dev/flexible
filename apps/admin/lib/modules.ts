@@ -21,6 +21,7 @@ export const MENU_MODULE_MAP: Record<string, string> = {
   '/warranty': 'fulfillment', // 출고현황 = 출고/물류 추적
   '/as': 'service',
   '/profit-loss': 'analytics',
+  '/deals': 'crm_pipeline',
 };
 
 // 전체 모듈 키 (preview/fallback에서 "전부 켜짐"으로 취급)

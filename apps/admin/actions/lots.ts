@@ -1,6 +1,7 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/server';
+import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import dayjs from 'dayjs';
 
@@ -77,6 +78,7 @@ export async function createLot(input: {
       received_at: input.received_at || null,
       quantity: input.quantity,
       memo: input.memo?.trim() || null,
+      workspace_id: await getCurrentWorkspaceId(),
     })
     .select('id, lot_number')
     .single();

@@ -1,6 +1,7 @@
 'use server';
 
 import { createAdminClient, createClient } from '@/lib/supabase/server';
+import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { AS_STATUS_LABEL } from '@/lib/asConstants';
 import type { AsStatus } from '@/lib/asConstants';
@@ -91,6 +92,7 @@ export async function getAsRequest(id: string) {
 export async function createAsRequest(formData: FormData) {
   if (process.env.PREVIEW_MODE === 'true') return { error: '미리보기 모드에서는 생성할 수 없습니다' };
   const supabase = await createAdminClient();
+  const workspaceId = await getCurrentWorkspaceId();
 
   // 채번: AS-YYYY-NNN
   const year = new Date().getFullYear();
@@ -120,6 +122,7 @@ export async function createAsRequest(formData: FormData) {
       estimated_completion_at: formData.get('estimated_completion_at') || null,
       repair_cost: formData.get('repair_cost') ? Number(formData.get('repair_cost')) : null,
       memo: formData.get('memo') || null,
+      workspace_id: workspaceId,
     })
     .select('id')
     .single();
@@ -132,6 +135,7 @@ export async function createAsRequest(formData: FormData) {
     status: 'received',
     content: '접수',
     created_by_name: formData.get('created_by_name') as string || '관리자',
+    workspace_id: workspaceId,
   });
 
   revalidatePath('/as');
@@ -170,6 +174,7 @@ export async function updateAsStatus(
     status,
     content: content || AS_STATUS_LABEL[status],
     created_by_name: createdByName || '관리자',
+    workspace_id: await getCurrentWorkspaceId(),
   });
 
   revalidatePath('/as');
@@ -257,6 +262,7 @@ export async function completeInspection(
     status: 'repairing',
     content: `검수 완료 → 수리 시작. 고장 부위: ${defectiveParts.length > 0 ? defectiveParts.join(', ') : '미선택'}`,
     created_by_name: inspectorName || '검수자',
+    workspace_id: await getCurrentWorkspaceId(),
   });
 
   revalidatePath('/as');

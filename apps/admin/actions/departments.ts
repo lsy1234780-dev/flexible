@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { requireSuperAdmin } from '@/lib/requireSuperAdmin';
 
@@ -47,7 +48,7 @@ export async function createDepartment(id: string, label: string, sortOrder: num
 
   const { error } = await admin
     .from('departments')
-    .insert({ id, label, sort_order: sortOrder });
+    .insert({ id, label, sort_order: sortOrder, workspace_id: await getCurrentWorkspaceId() });
 
   if (error) {
     if (error.code === '23505') return { error: '이미 존재하는 부서 ID입니다' };
@@ -107,7 +108,7 @@ export async function createPosition(id: string, label: string, level: number) {
 
   const { error } = await admin
     .from('positions')
-    .insert({ id, label, level });
+    .insert({ id, label, level, workspace_id: await getCurrentWorkspaceId() });
 
   if (error) {
     if (error.code === '23505') return { error: '이미 존재하는 직급 ID입니다' };

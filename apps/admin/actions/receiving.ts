@@ -1,6 +1,7 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/server';
+import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import dayjs from 'dayjs';
 
@@ -38,12 +39,15 @@ export async function createReceivingOrder(
   if (!title.trim()) return { error: '제목을 입력하세요' };
   if (items.length === 0) return { error: '입고 항목을 추가하세요' };
 
+  const workspaceId = await getCurrentWorkspaceId();
+
   const { data: order, error: orderErr } = await supabase
     .from('receiving_orders')
     .insert({
       title: title.trim(),
       status: 'pending',
       memo: memo?.trim() || null,
+      workspace_id: workspaceId,
     })
     .select('id')
     .single();
@@ -55,6 +59,7 @@ export async function createReceivingOrder(
     product_id: item.product_id,
     expected_quantity: item.expected_quantity,
     received_quantity: 0,
+    workspace_id: workspaceId,
   }));
 
   const { error: itemsErr } = await supabase
@@ -155,6 +160,7 @@ export async function confirmReceivingOrder(
   options?: ConfirmOptions,
 ) {
   const supabase = await createAdminClient();
+  const workspaceId = await getCurrentWorkspaceId();
   const generateBarcode = options?.generateUnitBarcode ?? false;
   const warehouseId = options?.warehouse_id ?? null;
   const locationId = options?.location_id ?? null;
@@ -223,6 +229,7 @@ export async function confirmReceivingOrder(
             manufactured_at: lot.manufactured_at,
             received_at: dayjs().format('YYYY-MM-DD'),
             quantity: 0,
+            workspace_id: workspaceId,
           })
           .select('id')
           .single();
@@ -321,6 +328,7 @@ export async function confirmReceivingOrder(
           quantity: 1,
           reason: '입고확정',
           memo: `입고지시서: ${order.title ?? orderId}`,
+          workspace_id: workspaceId,
         })),
       );
     }
@@ -345,6 +353,7 @@ export async function confirmReceivingOrder(
       quantity: qty,
       type: 'in',
       memo: `입고 확정 (시리얼 ${qty}건${ci.lots.length > 0 ? `, LOT ${ci.lots.length}건` : ''})`,
+      workspace_id: workspaceId,
     });
   }
 
@@ -371,6 +380,7 @@ export async function confirmReceivingOrder(
           title: `[잔여] ${orderTitle}`,
           status: 'pending',
           memo: `부분입고 완료 — 잔여분 (원본: ${orderTitle}, 미입고 ${totalExpected - totalReceived}개)`,
+          workspace_id: workspaceId,
         })
         .select('id')
         .single();
@@ -383,6 +393,7 @@ export async function confirmReceivingOrder(
             shortItems.map((si) => ({
               receiving_order_id: newOrder.id,
               ...si,
+              workspace_id: workspaceId,
             })),
           );
       }

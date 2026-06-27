@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { sendWelcome } from '@/lib/email';
@@ -134,7 +135,9 @@ export async function createCompany(formData: FormData) {
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { error } = await supabase.from('companies').insert(parsed.data);
+  const { error } = await supabase
+    .from('companies')
+    .insert({ ...parsed.data, workspace_id: await getCurrentWorkspaceId() });
   if (error) return { error: error.message };
 
   revalidatePath('/companies');

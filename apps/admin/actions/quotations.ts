@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { sendAlert } from '@/lib/email';
 import { generateQuotationBuffer } from '@/lib/pdf';
@@ -52,9 +53,11 @@ export async function createQuotation(
   const seq = String((count ?? 0) + 1).padStart(3, '0');
   const number = `Q-${year}-${seq}`;
 
+  const workspaceId = await getCurrentWorkspaceId();
+
   const { data: quotation, error: qErr } = await supabase
     .from('quotations')
-    .insert({ company_id: companyId, number, status: 'draft', issued_by: issuedBy })
+    .insert({ company_id: companyId, number, status: 'draft', issued_by: issuedBy, workspace_id: workspaceId })
     .select()
     .single();
   if (qErr) return { error: qErr.message };
@@ -67,6 +70,7 @@ export async function createQuotation(
       quantity: item.quantity,
       unit_price: item.unit_price,
       is_taxable: item.is_taxable ?? true,
+      workspace_id: workspaceId,
     })),
   );
   if (iErr) return { error: iErr.message };
@@ -171,6 +175,7 @@ export async function updateQuotationItems(
   items: { id?: string; product_id: string | null; label: string | null; quantity: number; unit_price: number; is_taxable: boolean }[],
 ) {
   const supabase = await createAdminClient();
+  const workspaceId = await getCurrentWorkspaceId();
 
   // 견적서 조회 — 연결된 발주가 있는지 확인
   const { data: quotation } = await supabase
@@ -194,6 +199,7 @@ export async function updateQuotationItems(
       quantity: item.quantity,
       unit_price: item.unit_price,
       is_taxable: item.is_taxable,
+      workspace_id: workspaceId,
     })),
   );
   if (insErr) return { error: insErr.message };
@@ -218,6 +224,7 @@ export async function updateQuotationItems(
             product_id: item.product_id!,
             quantity: item.quantity,
             unit_price: item.unit_price,
+            workspace_id: workspaceId,
           })),
         );
         if (oInsErr) return { error: `발주 동기화 실패: ${oInsErr.message}` };
@@ -263,9 +270,11 @@ export async function createQuotationFromOrder(orderId: string) {
   const seq = String((count ?? 0) + 1).padStart(3, '0');
   const number = `Q-${year}-${seq}`;
 
+  const workspaceId = await getCurrentWorkspaceId();
+
   const { data: quotation, error: cErr } = await supabase
     .from('quotations')
-    .insert({ company_id: order.company_id, number, status: 'draft', order_id: orderId, issued_by: issuedBy })
+    .insert({ company_id: order.company_id, number, status: 'draft', order_id: orderId, issued_by: issuedBy, workspace_id: workspaceId })
     .select('id, number')
     .single();
   if (cErr) return { error: cErr.message };
@@ -278,6 +287,7 @@ export async function createQuotationFromOrder(orderId: string) {
       quantity: item.quantity,
       unit_price: item.unit_price,
       is_taxable: true,
+      workspace_id: workspaceId,
     })),
   );
   if (iErr) return { error: iErr.message };

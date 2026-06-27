@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { sendAlert } from '@/lib/email';
 import type { OrderStatus } from '@/types/database';
@@ -80,6 +81,7 @@ async function logCrm(
     order_id: orderId,
     action,
     memo: memo ?? null,
+    workspace_id: await getCurrentWorkspaceId(),
   });
 }
 
@@ -187,6 +189,7 @@ export async function shipOrder(
     order_id: id,
     status: 'pending',
     serial_level: level,
+    workspace_id: await getCurrentWorkspaceId(),
   });
   if (shipError) return { error: shipError.message };
 
@@ -453,6 +456,8 @@ export async function updateOrderItems(
   if (order.status !== 'pending') return { error: '접수 상태의 발주만 수정할 수 있습니다' };
   const orderSlug = order.order_number ?? orderId;
 
+  const workspaceId = await getCurrentWorkspaceId();
+
   // 발주 항목 삭제 후 재삽입
   const { error: delErr } = await supabase.from('order_items').delete().eq('order_id', orderId);
   if (delErr) return { error: delErr.message };
@@ -463,6 +468,7 @@ export async function updateOrderItems(
       product_id: item.product_id,
       quantity: item.quantity,
       unit_price: item.unit_price,
+      workspace_id: workspaceId,
     })),
   );
   if (insErr) return { error: insErr.message };
@@ -482,6 +488,7 @@ export async function updateOrderItems(
         product_id: item.product_id,
         quantity: item.quantity,
         unit_price: item.unit_price,
+        workspace_id: workspaceId,
       })),
     );
     revalidatePath(`/quotations/${quotation.id}`);
@@ -558,6 +565,7 @@ export async function addCrmMemo(companyId: string, memo: string, orderId?: stri
     order_id: orderId ?? null,
     action: '메모',
     memo,
+    workspace_id: await getCurrentWorkspaceId(),
   });
   if (error) return { error: error.message };
   revalidatePath(`/companies/${companyId}`);

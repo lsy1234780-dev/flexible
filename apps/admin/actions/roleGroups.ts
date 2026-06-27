@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { requireSuperAdmin } from '@/lib/requireSuperAdmin';
 
@@ -23,7 +24,7 @@ export async function createRoleGroup(name: string, description: string, allowed
 
   const { data, error } = await admin
     .from('role_groups')
-    .insert({ name, description: description || null, allowed_menus: allowedMenus })
+    .insert({ name, description: description || null, allowed_menus: allowedMenus, workspace_id: await getCurrentWorkspaceId() })
     .select()
     .single();
 
@@ -101,7 +102,7 @@ export async function assignRoleGroup(userId: string, roleGroupId: string) {
 
   const { error } = await admin
     .from('user_role_groups')
-    .insert({ user_id: userId, role_group_id: roleGroupId });
+    .insert({ user_id: userId, role_group_id: roleGroupId, workspace_id: await getCurrentWorkspaceId() });
 
   if (error) {
     if (error.code === '23505') return { error: '이미 배정된 그룹입니다' };

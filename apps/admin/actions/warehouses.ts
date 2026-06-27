@@ -1,6 +1,7 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/server';
+import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { getChildType } from '@/lib/warehouseUtils';
 
@@ -63,6 +64,7 @@ export async function createWarehouse(input: {
       manager_name: input.manager_name?.trim() || null,
       manager_contact: input.manager_contact?.trim() || null,
       memo: input.memo?.trim() || null,
+      workspace_id: await getCurrentWorkspaceId(),
     })
     .select('id, name, code')
     .single();
@@ -249,6 +251,7 @@ export async function createLocation(input: {
       code: input.code.trim().toUpperCase(),
       description: input.description?.trim() || null,
       sort_order: input.sort_order ?? 0,
+      workspace_id: await getCurrentWorkspaceId(),
     })
     .select('id, type, code, full_path')
     .single();
@@ -440,6 +443,7 @@ export async function upsertWarehouseInventory(input: {
         product_id: input.product_id,
         quantity: input.quantity,
         memo: input.memo || null,
+        workspace_id: await getCurrentWorkspaceId(),
       });
     if (error) {
       if (error.code === '23505') return { error: '이미 동일한 위치에 해당 제품 재고가 있습니다' };
@@ -506,6 +510,7 @@ export async function convertBulkToSerials(input: {
   // inventory_movements 기록
   const createdItems = items as { item_id: string }[];
   if (createdItems.length > 0) {
+    const workspaceId = await getCurrentWorkspaceId();
     await supabase.from('inventory_movements').insert(
       createdItems.map((item) => ({
         inventory_item_id: item.item_id,
@@ -515,6 +520,7 @@ export async function convertBulkToSerials(input: {
         quantity: 1,
         reason: '벌크→시리얼 전환',
         memo: null,
+        workspace_id: workspaceId,
       })),
     );
   }

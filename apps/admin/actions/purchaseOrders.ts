@@ -1,6 +1,7 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/server';
+import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 
 // ── 타입 ──
@@ -157,6 +158,7 @@ export async function getPurchaseOrderDetail(id: string) {
 
 export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
   const supabase = await createAdminClient();
+  const workspaceId = await getCurrentWorkspaceId();
 
   const { data: po, error } = await supabase
     .from('purchase_orders')
@@ -171,6 +173,7 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
       exchange_rate: input.exchange_rate ?? null,
       vat_amount: input.vat_amount ?? null,
       memo: input.memo ?? null,
+      workspace_id: workspaceId,
     })
     .select('id')
     .single();
@@ -186,6 +189,7 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
           product_id: item.product_id,
           quantity: item.quantity,
           unit_cost: item.unit_cost ?? null,
+          workspace_id: workspaceId,
         })),
       );
     if (itemErr) return { error: itemErr.message };
@@ -242,6 +246,7 @@ export async function addPurchaseOrderItem(
     product_id: productId,
     quantity,
     unit_cost: unitCost ?? null,
+    workspace_id: await getCurrentWorkspaceId(),
   });
 
   if (error) return { error: error.message };
@@ -294,6 +299,7 @@ export async function addPayment(
     label: data.label ?? null,
     memo: data.memo ?? null,
     attachment_url: data.attachment_url ?? null,
+    workspace_id: await getCurrentWorkspaceId(),
   });
 
   if (error) return { error: error.message };

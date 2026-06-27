@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import dayjs from 'dayjs';
@@ -77,9 +78,12 @@ export async function createProduct(formData: FormData) {
     return { error: parsed.error.issues[0].message };
   }
 
+  // 멀티테넌시: 모든 INSERT는 현재 워크스페이스로 귀속 (DB 055 NOT NULL 안전망)
+  const workspaceId = await getCurrentWorkspaceId();
+
   const { data: product, error } = await supabase
     .from('products')
-    .insert(parsed.data)
+    .insert({ ...parsed.data, workspace_id: workspaceId })
     .select('id')
     .single();
   if (error) {
@@ -103,6 +107,7 @@ export async function createProduct(formData: FormData) {
         received_at: today.format('YYYY-MM-DD'),
         quantity: parsed.data.base_stock,
         memo: '제품 등록 시 초기재고',
+        workspace_id: workspaceId,
       })
       .select('id')
       .single();
@@ -129,6 +134,7 @@ export async function createProduct(formData: FormData) {
         type: 'in' as const,
         reason: 'initial_stock',
         note: '제품 등록 시 초기재고 입고',
+        workspace_id: workspaceId,
       }));
 
       if (movements.length > 0) {
@@ -142,6 +148,7 @@ export async function createProduct(formData: FormData) {
       quantity: parsed.data.base_stock,
       type: 'in',
       memo: `최초재고 입고 (${parsed.data.base_stock}개, ${lotNumber})`,
+      workspace_id: workspaceId,
     });
   }
 

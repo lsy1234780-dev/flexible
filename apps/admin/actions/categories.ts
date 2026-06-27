@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 
 export async function getCategories() {
@@ -43,6 +44,7 @@ export async function createCategory(name: string, parentId: string | null) {
   const { error } = await supabase.from('categories').insert({
     name: trimmed,
     parent_id: parentId || null,
+    workspace_id: await getCurrentWorkspaceId(),
   });
 
   if (error) return { error: error.message };

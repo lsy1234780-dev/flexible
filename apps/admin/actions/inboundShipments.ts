@@ -1,6 +1,7 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/server';
+import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { getStageConfig } from '@/lib/inboundStages';
 
@@ -171,6 +172,7 @@ export async function getInboundShipmentDetail(id: string) {
 
 export async function createInboundShipment(input: CreateShipmentInput) {
   const supabase = await createAdminClient();
+  const workspaceId = await getCurrentWorkspaceId();
 
   // BL번호 중복 체크
   if (input.bl_number) {
@@ -197,6 +199,7 @@ export async function createInboundShipment(input: CreateShipmentInput) {
       vehicle_number: input.vehicle_number ?? null,
       estimated_arrival: input.estimated_arrival ?? null,
       memo: input.memo ?? null,
+      workspace_id: workspaceId,
     })
     .select('id')
     .single();
@@ -213,6 +216,7 @@ export async function createInboundShipment(input: CreateShipmentInput) {
           product_id: item.product_id,
           quantity: item.quantity,
           unit_cost: item.unit_cost ?? null,
+          workspace_id: workspaceId,
         })),
       );
     if (itemErr) return { error: itemErr.message };
@@ -225,6 +229,7 @@ export async function createInboundShipment(input: CreateShipmentInput) {
     event_type: 'stage_change',
     title: `${stageConfig.label} 등록`,
     to_stage: input.stage ?? 'in_transit',
+    workspace_id: workspaceId,
   });
 
   revalidatePath('/receiving');
@@ -315,6 +320,7 @@ export async function changeShipmentStage(id: string, newStage: string, memo?: s
     description: memo ?? null,
     from_stage: oldStage,
     to_stage: newStage,
+    workspace_id: await getCurrentWorkspaceId(),
   });
 
   revalidatePath('/receiving');
@@ -336,6 +342,7 @@ export async function addShipmentItem(
     product_id: productId,
     quantity,
     unit_cost: unitCost ?? null,
+    workspace_id: await getCurrentWorkspaceId(),
   });
 
   if (error) return { error: error.message };
@@ -386,6 +393,7 @@ export async function addShipmentEvent(
     event_type: 'memo',
     title,
     description: description ?? null,
+    workspace_id: await getCurrentWorkspaceId(),
   });
 
   if (error) return { error: error.message };
@@ -418,9 +426,11 @@ export async function linkReceivingOrder(shipmentId: string) {
     return { error: '품목이 없습니다' };
   }
 
+  const workspaceId = await getCurrentWorkspaceId();
+
   const { data: order, error: orderErr } = await supabase
     .from('receiving_orders')
-    .insert({ title: shipment.title, status: 'pending' })
+    .insert({ title: shipment.title, status: 'pending', workspace_id: workspaceId })
     .select('id')
     .single();
 
@@ -432,6 +442,7 @@ export async function linkReceivingOrder(shipmentId: string) {
       product_id: item.product_id,
       expected_quantity: item.quantity,
       received_quantity: 0,
+      workspace_id: workspaceId,
     })),
   );
 
@@ -447,6 +458,7 @@ export async function linkReceivingOrder(shipmentId: string) {
     event_type: 'memo',
     title: '입고지시서 자동 생성',
     description: `입고지시서 #${order.id.slice(0, 8)} 생성됨`,
+    workspace_id: workspaceId,
   });
 
   revalidatePath('/receiving');

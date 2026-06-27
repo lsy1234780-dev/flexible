@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
@@ -161,6 +162,7 @@ export async function directShipProduct(input: {
   }
 
   const supabase = await createAdminClient();
+  const workspaceId = await getCurrentWorkspaceId();
 
   // 가용 재고 확인
   const { data: availableItems } = await supabase
@@ -200,6 +202,7 @@ export async function directShipProduct(input: {
       confirmed_at: new Date().toISOString(),
       confirmed_by: input.handlerName,
       notes: input.memo || null,
+      workspace_id: workspaceId,
     })
     .select('id')
     .single();
@@ -212,6 +215,7 @@ export async function directShipProduct(input: {
     product_id: input.productId,
     quantity: input.quantity,
     unit_price: unitPrice,
+    workspace_id: workspaceId,
   });
   if (oiErr) return { error: oiErr.message };
 
@@ -223,6 +227,7 @@ export async function directShipProduct(input: {
       status: 'completed',
       shipped_at: new Date().toISOString(),
       completed_at: new Date().toISOString(),
+      workspace_id: workspaceId,
     })
     .select('id')
     .single();
@@ -237,6 +242,7 @@ export async function directShipProduct(input: {
       inventory_item_id: itemId,
       product_id: input.productId,
       quantity: 1,
+      workspace_id: workspaceId,
     })),
   );
 
@@ -254,6 +260,7 @@ export async function directShipProduct(input: {
       reason: '직접 출고',
       memo: input.memo || null,
       sale_price: input.sale_price ?? null,
+      workspace_id: workspaceId,
     })),
   );
 
@@ -273,6 +280,7 @@ export async function directShipProduct(input: {
 
 export async function processBarcodeScan(formData: FormData) {
   const supabase = await createClient();
+  const workspaceId = await getCurrentWorkspaceId();
 
   const parsed = ScanSchema.safeParse({
     barcode: formData.get('barcode'),
@@ -328,6 +336,7 @@ export async function processBarcodeScan(formData: FormData) {
           quantity: 1,
           reason: '바코드 입고',
           memo: memo || null,
+          workspace_id: workspaceId,
         })),
       );
     }
@@ -367,6 +376,7 @@ export async function processBarcodeScan(formData: FormData) {
         reason: '바코드 출고',
         memo: memo || null,
         sale_price: sale_price ?? null,
+        workspace_id: workspaceId,
       })),
     );
   }
@@ -377,6 +387,7 @@ export async function processBarcodeScan(formData: FormData) {
     quantity,
     type,
     memo: memo || null,
+    workspace_id: workspaceId,
     ...(type === 'out' && sale_price != null ? { sale_price } : {}),
   });
 

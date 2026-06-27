@@ -1,6 +1,7 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/server';
+import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 
 // ── 출고 시리얼 배정 ──
@@ -76,12 +77,14 @@ export async function autoAssignSerials(
   }
 
   // shipment_serials에 배정
+  const workspaceId = await getCurrentWorkspaceId();
   const inserts = serials.map((s) => ({
     shipment_id: shipmentId,
     inventory_item_id: s.id,
     product_id: productId,
     quantity: 1,
     assigned_by: 'auto' as const,
+    workspace_id: workspaceId,
   }));
 
   const { error: insErr } = await supabase
@@ -134,12 +137,14 @@ export async function assignSerials(
   }
 
   // 배정
+  const workspaceId = await getCurrentWorkspaceId();
   const inserts = items.map((i) => ({
     shipment_id: shipmentId,
     inventory_item_id: i.inventory_item_id,
     product_id: i.product_id,
     quantity: 1,
     assigned_by: 'admin' as const,
+    workspace_id: workspaceId,
   }));
 
   const { error: insErr } = await supabase
@@ -205,12 +210,14 @@ export async function assignSerialsByText(
   }
 
   // 배정
+  const workspaceId = await getCurrentWorkspaceId();
   const inserts = assignable.map((s) => ({
     shipment_id: shipmentId,
     inventory_item_id: s.id,
     product_id: productId,
     quantity: 1,
     assigned_by: 'admin' as const,
+    workspace_id: workspaceId,
   }));
 
   const { error: insErr } = await supabase
@@ -284,12 +291,14 @@ export async function matchSerialsAcrossProducts(
   }
 
   // 배정 (product_id는 시리얼에서 자동 감지)
+  const workspaceId = await getCurrentWorkspaceId();
   const inserts = assignable.map((s) => ({
     shipment_id: shipmentId,
     inventory_item_id: s.id,
     product_id: s.product_id,
     quantity: 1,
     assigned_by: 'admin' as const,
+    workspace_id: workspaceId,
   }));
 
   const { error: insErr } = await supabase
@@ -337,6 +346,7 @@ export async function assignQuantityOnly(
       product_id: productId,
       quantity,
       assigned_by: 'admin',
+      workspace_id: await getCurrentWorkspaceId(),
     });
 
   if (error) return { error: error.message };

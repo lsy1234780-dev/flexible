@@ -3,6 +3,7 @@ import { getRoleGroups, getAllUserRoleGroups } from '@/actions/roleGroups';
 import { getMenuAccessRules } from '@/actions/menuAccess';
 import { getDepartments, getPositions } from '@/actions/departments';
 import { getSuperAdminMinLevel } from '@/actions/settings';
+import { getEnabledModules } from '@/actions/modules';
 import { isSuperAdmin } from '@/lib/roles';
 import SettingsClient from './SettingsClient';
 
@@ -14,7 +15,7 @@ export default async function SettingsPage() {
     getSuperAdminMinLevel(),
   ]);
   const isAdmin = isSuperAdmin(role, superAdminMinLevel);
-  const [users, groups, userGroupMappings, menuRules, departments, positions] = isAdmin
+  const [users, groups, userGroupMappings, menuRules, departments, positions, enabledModules] = isAdmin
     ? await Promise.all([
         getAdminUsers(),
         getRoleGroups(),
@@ -22,8 +23,9 @@ export default async function SettingsPage() {
         getMenuAccessRules(),
         getDepartments(),
         getPositions(),
+        getEnabledModules(),
       ])
-    : [[], [], [], [], [], []];
+    : [[], [], [], [], [], [], []];
 
   return (
     <SettingsClient
@@ -35,6 +37,7 @@ export default async function SettingsPage() {
       departments={departments}
       positions={positions}
       superAdminMinLevel={superAdminMinLevel}
+      enabledModules={enabledModules as string[]}
     />
   );
 }

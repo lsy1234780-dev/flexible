@@ -21,7 +21,10 @@ import {
   createPosition, updatePosition, deletePosition,
 } from '@/actions/departments';
 import { updateSuperAdminMinLevel } from '@/actions/settings';
+import { setModuleEnabled } from '@/actions/modules';
 import { isSuperAdmin, ALL_MENUS } from '@/lib/roles';
+import { MODULE_CATALOG } from '@/lib/modules';
+import { cn } from '@/lib/utils';
 import type { UserRole, MenuAccessRule } from '@/lib/roles';
 import type { DepartmentRow, PositionRow } from '@/actions/departments';
 import dayjs from 'dayjs';
@@ -65,15 +68,42 @@ interface Props {
   departments: DepartmentRow[];
   positions: PositionRow[];
   superAdminMinLevel: number;
+  enabledModules: string[];
 }
 
 export default function SettingsClient({
-  role, users, groups, userGroupMappings, menuRules, departments, positions, superAdminMinLevel,
+  role, users, groups, userGroupMappings, menuRules, departments, positions, superAdminMinLevel, enabledModules,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const canManage = isSuperAdmin(role, superAdminMinLevel);
   const [masterLevel, setMasterLevel] = useState(superAdminMinLevel);
+
+  // ─── 기능 모듈 토글 ───
+  const [moduleSet, setModuleSet] = useState<Set<string>>(new Set(enabledModules));
+
+  function handleToggleModule(key: string, next: boolean) {
+    // 낙관적 업데이트 후 실패 시 롤백
+    setModuleSet((prev) => {
+      const s = new Set(prev);
+      if (next) s.add(key); else s.delete(key);
+      return s;
+    });
+    startTransition(async () => {
+      const result = await setModuleEnabled(key, next);
+      if (result?.error) {
+        toast.error(result.error);
+        setModuleSet((prev) => {
+          const s = new Set(prev);
+          if (next) s.delete(key); else s.add(key);
+          return s;
+        });
+        return;
+      }
+      toast.success(`모듈이 ${next ? '켜졌' : '꺼졌'}습니다`);
+      router.refresh();
+    });
+  }
 
   // 마스터 레벨 이상인 직급은 메뉴 접근 규칙에서 제외 (항상 전체 접근)
   const nonMasterPositions = positions.filter((p) => p.level < superAdminMinLevel);
@@ -676,6 +706,57 @@ export default function SettingsClient({
 
       {canManage && (
         <>
+          {/* 기능 모듈 (조립) */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">기능 모듈</CardTitle>
+              <p className="text-xs text-gray-500 mt-1">
+                워크스페이스에서 사용할 기능을 켜고 끕니다. 끄면 관련 메뉴가 사이드바에서 사라집니다.
+                <span className="text-gray-400"> · 필수 모듈은 끌 수 없습니다.</span>
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+                {MODULE_CATALOG.map((m) => {
+                  const isCore = m.tier === 'core';
+                  const on = isCore || moduleSet.has(m.key);
+                  const locked = isCore || m.comingSoon || isPending;
+                  return (
+                    <div key={m.key} className="flex items-center justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-medium text-gray-900">{m.label}</span>
+                          {isCore && <Badge variant="secondary" className="text-[10px]">필수</Badge>}
+                          {m.comingSoon && <Badge variant="outline" className="text-[10px] text-gray-400">준비중</Badge>}
+                        </div>
+                        <p className="text-xs text-gray-400 truncate">{m.description}</p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={on}
+                        disabled={locked}
+                        onClick={() => handleToggleModule(m.key, !on)}
+                        className={cn(
+                          'relative h-6 w-11 flex-shrink-0 rounded-full transition-colors',
+                          on ? 'bg-gray-900' : 'bg-gray-200',
+                          locked && 'opacity-40 cursor-not-allowed',
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform',
+                            on && 'translate-x-5',
+                          )}
+                        />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
           {/* 마스터 레벨 설정 */}
           <Card>
             <CardHeader className="pb-3">

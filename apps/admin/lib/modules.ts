@@ -30,6 +30,39 @@ export const ALL_MODULE_KEYS = [
   'b2b_portal', 'crm_pipeline', 'chat', 'ecommerce', 'pos', 'warranty',
 ] as const;
 
+// 모듈 카탈로그 — 설정 화면의 토글 목록 소스 (docs/architecture/module-map.md 기준).
+// tier 'core' = 항상 ON(끌 수 없음). comingSoon = 아직 화면 미구현(토글 비활성).
+export interface ModuleInfo {
+  key: string;
+  label: string;
+  description: string;
+  tier: 'core' | 'optional';
+  comingSoon?: boolean;
+}
+
+export const MODULE_CATALOG: ModuleInfo[] = [
+  { key: 'partners', label: '거래처/고객', description: '거래처·단가 관리', tier: 'core' },
+  { key: 'products', label: '제품/카탈로그', description: '제품·카테고리', tier: 'core' },
+  { key: 'platform', label: '인증·권한·설정', description: '로그인·RBAC·설정', tier: 'core' },
+  { key: 'inventory', label: '재고·창고', description: '재고 현황·창고 관리', tier: 'optional' },
+  { key: 'serials', label: '시리얼·LOT 추적', description: '시리얼 바코드·LOT', tier: 'optional' },
+  { key: 'receiving', label: '입고', description: '입고지시·입고 작업', tier: 'optional' },
+  { key: 'purchasing', label: '발주·구매', description: '구매발주·대금', tier: 'optional' },
+  { key: 'supply', label: '선적·통관', description: '수입 공급망', tier: 'optional' },
+  { key: 'orders', label: '수주(판매주문)', description: '주문 관리', tier: 'optional' },
+  { key: 'quotations', label: '견적', description: '견적서·PDF·이메일', tier: 'optional' },
+  { key: 'fulfillment', label: '출고·물류', description: '출고·배송 추적', tier: 'optional' },
+  { key: 'service', label: 'A/S·수리', description: 'AS 접수·수리 이력', tier: 'optional' },
+  { key: 'crm_basic', label: '거래처 이력', description: 'CRM 메모·활동 로그', tier: 'optional' },
+  { key: 'analytics', label: '손익·분석', description: '손익계산서·대시보드', tier: 'optional' },
+  { key: 'b2b_portal', label: 'B2B 포털', description: '협력사 셀프 포털', tier: 'optional' },
+  { key: 'crm_pipeline', label: '영업 파이프라인', description: '리드→딜 관리', tier: 'optional', comingSoon: true },
+  { key: 'chat', label: '팀 채팅', description: '채팅 + 엔티티 멘션', tier: 'optional', comingSoon: true },
+  { key: 'warranty', label: '보증 관리', description: '보증 추적', tier: 'optional', comingSoon: true },
+  { key: 'ecommerce', label: '이커머스 연동', description: '온라인스토어', tier: 'optional', comingSoon: true },
+  { key: 'pos', label: 'POS', description: '오프라인 판매', tier: 'optional', comingSoon: true },
+];
+
 // 해당 메뉴가 현재 워크스페이스에서 켜진 모듈에 속하는지.
 // - enabledModules가 없으면(미전달) 게이팅하지 않음 → 안전 fallback(전부 노출).
 // - 매핑 없는 메뉴(외부 링크, /settings 등 코어)는 항상 허용.

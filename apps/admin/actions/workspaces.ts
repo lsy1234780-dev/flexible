@@ -133,64 +133,20 @@ export async function createWorkspaceForCurrentUser(input: { companyName: string
   }
   const { companyName, slug } = parsed.data;
 
+  // 오너 패턴: service role 없이 SECURITY DEFINER 함수로 워크스페이스 생성(anon+세션).
+  // 함수가 auth.uid()로 호출자를 식별 → workspace + owner 멤버십 + 모듈 시드.
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: 'Unauthorized' };
+  const { data, error } = await supabase.rpc('create_workspace_for_user', {
+    p_name: companyName,
+    p_slug: slug,
+  });
 
-  const admin = createAdminClient();
-
-  // 이미 워크스페이스에 속해 있으면 중복 생성 방지
-  const { data: existingMembership } = await admin
-    .from('workspace_members')
-    .select('workspace_id')
-    .eq('user_id', user.id)
-    .limit(1)
-    .maybeSingle();
-  if (existingMembership) {
-    return { success: true, workspaceId: existingMembership.workspace_id };
+  if (error) {
+    if (error.message.includes('SLUG_TAKEN')) return { error: '이미 사용 중인 주소(slug)입니다.' };
+    if (error.message.includes('INVALID_SLUG')) return { error: 'slug는 영소문자/숫자/하이픈만 가능합니다.' };
+    if (error.message.includes('NOT_AUTHENTICATED')) return { error: '로그인이 필요합니다.' };
+    return { error: error.message };
   }
 
-  // slug 선점 확인
-  const { data: existing } = await admin
-    .from('workspaces')
-    .select('id')
-    .eq('slug', slug)
-    .maybeSingle();
-  if (existing) {
-    return { error: '이미 사용 중인 주소(slug)입니다.' };
-  }
-
-  // 워크스페이스 생성
-  const { data: ws, error: wsErr } = await admin
-    .from('workspaces')
-    .insert({ name: companyName, slug, plan: 'basic', status: 'active' })
-    .select('id')
-    .single();
-  if (wsErr || !ws) {
-    return { error: wsErr?.message ?? '워크스페이스 생성에 실패했습니다.' };
-  }
-  const workspaceId = ws.id as string;
-
-  // owner 멤버십
-  const { error: memErr } = await admin
-    .from('workspace_members')
-    .insert({ workspace_id: workspaceId, user_id: user.id, role: 'owner' });
-  if (memErr) {
-    await admin.from('workspaces').delete().eq('id', workspaceId);
-    return { error: memErr.message };
-  }
-
-  // 기본 모듈 시드
-  const { error: modErr } = await admin.from('workspace_modules').insert(
-    DEFAULT_MODULES.map((m) => ({
-      workspace_id: workspaceId,
-      module_key: m.key,
-      enabled: m.enabled,
-    })),
-  );
-  if (modErr) return { error: modErr.message };
-
-  return { success: true, workspaceId };
+  return { success: true, workspaceId: data as string };
 }

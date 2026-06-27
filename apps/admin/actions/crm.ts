@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 
@@ -17,9 +17,9 @@ export async function logActivity(input: {
   companyId?: string | null; // 거래처 연결(선택, 호환)
   dueAt?: string | null;     // task 마감
 }): Promise<{ error?: string; success?: boolean }> {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
   const workspaceId = await getCurrentWorkspaceId();
-  const { data: { user } } = await (await createClient()).auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
 
   const { error } = await supabase.from('crm_logs').insert({
     workspace_id: workspaceId,
@@ -77,7 +77,7 @@ export async function addActivity(input: {
 
 // task 완료 토글 (팔로업 체크)
 export async function toggleActivityDone(id: string, done: boolean): Promise<{ error?: string; success?: boolean }> {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
   const { error } = await supabase.from('crm_logs').update({ done }).eq('id', id);
   if (error) return { error: error.message };
   return { success: true };

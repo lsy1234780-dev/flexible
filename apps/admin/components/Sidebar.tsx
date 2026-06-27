@@ -12,6 +12,7 @@ import { useMemo, useState, useTransition } from 'react';
 import { cn } from '@/lib/utils';
 import { signOut } from '@/actions/auth';
 import { canAccessMenu } from '@/lib/roles';
+import { isMenuModuleEnabled } from '@/lib/modules';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import type { UserRole, MenuAccessRule } from '@/lib/roles';
 
@@ -79,10 +80,11 @@ interface Props {
   departmentLabels?: Record<string, string>;
   positionLabels?: Record<string, string>;
   superAdminMinLevel?: number;
+  enabledModules?: string[];
   userName?: string;
 }
 
-export default function Sidebar({ role, menuRules, departmentLabels = {}, positionLabels = {}, superAdminMinLevel, userName = '사용자' }: Props) {
+export default function Sidebar({ role, menuRules, departmentLabels = {}, positionLabels = {}, superAdminMinLevel, enabledModules, userName = '사용자' }: Props) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -95,15 +97,19 @@ export default function Sidebar({ role, menuRules, departmentLabels = {}, positi
     startTransition(() => signOut());
   }
 
-  // 역할에 따라 접근 가능한 메뉴만 필터
+  // 메뉴 노출 조건: ① 모듈 ON(워크스페이스가 그 기능을 씀) + ② RBAC 권한 OK(이 유저가 접근 가능)
   const navGroups = useMemo(() => {
     return allNavGroups
       .map((group) => ({
         ...group,
-        items: group.items.filter((item) => canAccessMenu(item.href, role, menuRules, superAdminMinLevel)),
+        items: group.items.filter(
+          (item) =>
+            isMenuModuleEnabled(item.href, enabledModules) &&
+            canAccessMenu(item.href, role, menuRules, superAdminMinLevel),
+        ),
       }))
       .filter((group) => group.items.length > 0);
-  }, [role, menuRules, superAdminMinLevel]);
+  }, [role, menuRules, superAdminMinLevel, enabledModules]);
 
   function isActive(href: string, exact?: boolean) {
     if (exact) return pathname === href;

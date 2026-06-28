@@ -27,7 +27,19 @@ export async function getChannels() {
     ({ data, error } = await supabase.from('channels').select('*').order('created_at'));
     if (error) throw new Error(error.message);
   }
-  return data ?? [];
+
+  // 안읽음 개수 병합
+  const { data: unreads } = await supabase.rpc('get_channel_unreads');
+  const unreadMap = new Map<string, number>(
+    (unreads ?? []).map((u: { channel_id: string; unread: number }) => [u.channel_id, Number(u.unread)]),
+  );
+  return (data ?? []).map((c) => ({ ...c, unread: unreadMap.get(c.id) ?? 0 }));
+}
+
+// 채널 진입 시 읽음 처리
+export async function markChannelRead(channelId: string) {
+  const supabase = await createClient();
+  await supabase.rpc('mark_channel_read', { p_channel: channelId });
 }
 
 export async function createChannel(name: string) {
@@ -53,7 +65,7 @@ export async function getMessages(channelId: string, limit = 100) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('messages')
-    .select('id, author_id, author_name, body, created_at, message_mentions(entity_type, entity_id, label)')
+    .select('id, author_id, author_name, body, created_at, reply_to, message_mentions(entity_type, entity_id, label), message_reactions(emoji, user_id)')
     .eq('channel_id', channelId)
     .is('deleted_at', null)
     .order('created_at', { ascending: true })
@@ -62,7 +74,12 @@ export async function getMessages(channelId: string, limit = 100) {
   return data;
 }
 
-export async function sendMessage(channelId: string, body: string, mentions: MentionInput[] = []) {
+export async function sendMessage(
+  channelId: string,
+  body: string,
+  mentions: MentionInput[] = [],
+  replyTo: string | null = null,
+) {
   const text = body.trim();
   if (!text && mentions.length === 0) return { error: '메시지를 입력하세요' };
 
@@ -78,6 +95,7 @@ export async function sendMessage(channelId: string, body: string, mentions: Men
       author_id: me?.id ?? null,
       author_name: me?.name ?? '사용자',
       body: text,
+      reply_to: replyTo,
     })
     .select('id')
     .single();
@@ -96,6 +114,30 @@ export async function sendMessage(channelId: string, body: string, mentions: Men
     if (mErr) return { error: mErr.message };
   }
   return { success: true, id: msg.id };
+}
+
+// ─── 이모지 반응 (토글) ───
+
+export async function toggleReaction(messageId: string, emoji: string) {
+  const supabase = await createClient();
+  const me = await getCurrentUser();
+  if (!me?.id) return { error: '로그인이 필요합니다' };
+
+  // 이미 있으면 제거, 없으면 추가
+  const { data: deleted, error: delErr } = await supabase
+    .from('message_reactions')
+    .delete()
+    .match({ message_id: messageId, user_id: me.id, emoji })
+    .select('id');
+  if (delErr) return { error: delErr.message };
+  if (deleted && deleted.length > 0) return { success: true, removed: true };
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const { error: insErr } = await supabase
+    .from('message_reactions')
+    .insert({ workspace_id: workspaceId, message_id: messageId, user_id: me.id, emoji });
+  if (insErr) return { error: insErr.message };
+  return { success: true, removed: false };
 }
 
 // ─── 엔티티 멘션 검색 (켜진 모듈의 레코드만 — 비전 핵심) ───

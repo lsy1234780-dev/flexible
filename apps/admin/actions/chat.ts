@@ -76,6 +76,52 @@ export async function shareToChat(params: {
   return { success: true, channelId };
 }
 
+// 이 레코드를 멘션한 대화들 (역링크 — 레코드 화면의 "관련 대화" 패널).
+// RLS(mentions_select)가 내가 볼 수 있는 메시지의 멘션만 반환 → 남의 DM은 자동 제외.
+export interface RecordMention {
+  message_id: string;
+  channel_id: string | null;
+  channel_name: string | null;
+  channel_kind: string | null;
+  author_name: string | null;
+  body: string;
+  created_at: string;
+}
+
+export async function getRecordMentions(entityType: string, entityId: string): Promise<RecordMention[]> {
+  if (process.env.PREVIEW_MODE === 'true') return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('message_mentions')
+    .select('message_id, created_at, messages(id, body, author_name, created_at, channel_id, deleted_at, channels(name, kind))')
+    .eq('entity_type', entityType)
+    .eq('entity_id', entityId)
+    .order('created_at', { ascending: false })
+    .limit(30);
+  if (error) throw new Error(error.message);
+
+  type Row = {
+    message_id: string;
+    messages: {
+      id: string; body: string; author_name: string | null; created_at: string;
+      channel_id: string | null; deleted_at: string | null;
+      channels: { name: string | null; kind: string | null } | null;
+    } | null;
+  };
+
+  return ((data ?? []) as unknown as Row[])
+    .filter((r) => r.messages && !r.messages.deleted_at)
+    .map((r) => ({
+      message_id: r.message_id,
+      channel_id: r.messages!.channel_id,
+      channel_name: r.messages!.channels?.name ?? null,
+      channel_kind: r.messages!.channels?.kind ?? null,
+      author_name: r.messages!.author_name,
+      body: r.messages!.body,
+      created_at: r.messages!.created_at,
+    }));
+}
+
 export async function createChannel(name: string) {
   const clean = name.trim().replace(/^#/, '').replace(/\s+/g, '-').toLowerCase();
   if (!clean) return { error: '채널 이름을 입력하세요' };

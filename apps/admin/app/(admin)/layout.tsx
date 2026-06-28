@@ -1,4 +1,5 @@
 import Sidebar from '@/components/Sidebar';
+import { ModulesProvider } from '@/components/ModulesProvider';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { getUserRole, getCurrentUser } from '@/actions/auth';
 import { getMyExtraMenus } from '@/actions/roleGroups';
@@ -38,7 +39,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           enabledModules={enabledModules}
           userName={currentUser?.name ?? '사용자'}
         />
-        <main className="flex-1 overflow-y-auto p-4 pt-18 md:p-6 md:pt-6">{children}</main>
+        <main className="flex-1 overflow-y-auto p-4 pt-18 md:p-6 md:pt-6">
+          <ModulesProvider modules={enabledModules}>{children}</ModulesProvider>
+        </main>
       </div>
     </TooltipProvider>
   );

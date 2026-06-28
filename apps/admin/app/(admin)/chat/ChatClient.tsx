@@ -37,14 +37,19 @@ interface Props {
   channels: Channel[];
   meId: string | null;
   meName: string;
+  initialChannelId?: string | null;
 }
 
 const channelLabel = (c: Channel) => (c.kind === 'dm' ? (c.partner_name ?? '다이렉트 메시지') : c.name);
 
-export default function ChatClient({ channels: initialChannels, meId, meName }: Props) {
+export default function ChatClient({ channels: initialChannels, meId, meName, initialChannelId }: Props) {
   const router = useRouter();
   const [channels, setChannels] = useState<Channel[]>(initialChannels);
-  const [activeId, setActiveId] = useState<string | null>(initialChannels[0]?.id ?? null);
+  const [activeId, setActiveId] = useState<string | null>(
+    (initialChannelId && initialChannels.some((c) => c.id === initialChannelId) ? initialChannelId : null)
+      ?? initialChannels[0]?.id
+      ?? null,
+  );
   const [messages, setMessages] = useState<Message[]>([]);
   const [threadParent, setThreadParent] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);

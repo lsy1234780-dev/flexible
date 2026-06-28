@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Share2, Hash, User, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useModuleEnabled } from '@/components/ModulesProvider';
 import { getChannels, getWorkspaceMembers, shareToChat } from '@/actions/chat';
 
 interface Props {
@@ -27,6 +28,7 @@ interface Dest {
 }
 
 export default function ShareToChat({ entityType, entityId, label, className }: Props) {
+  const chatEnabled = useModuleEnabled('chat');
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState('');
   const [dests, setDests] = useState<Dest[] | null>(null);
@@ -65,6 +67,9 @@ export default function ShareToChat({ entityType, entityId, label, className }: 
   const filtered = (dests ?? []).filter((d) => !q || d.name.toLowerCase().includes(q.toLowerCase()));
   const channels = filtered.filter((d) => d.kind === 'channel');
   const users = filtered.filter((d) => d.kind === 'user');
+
+  // chat 모듈이 꺼진 워크스페이스에선 공유 버튼 자체를 숨김
+  if (!chatEnabled) return null;
 
   return (
     <div className={cn('relative inline-block', className)}>

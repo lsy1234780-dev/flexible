@@ -11,6 +11,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import ShareToChat from '@/components/ShareToChat';
+import RecordChatPanel from '@/components/RecordChatPanel';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -1409,6 +1410,13 @@ export default function OrderDetailClient({ order }: Props) {
           )}
         </>
       )}
+
+      {/* 관련 대화 (역링크) */}
+      <Card>
+        <CardContent className="py-4">
+          <RecordChatPanel entityType="order" entityId={order.id} />
+        </CardContent>
+      </Card>
 
       {/* 출고 지시 다이얼로그 */}
       {shipDialogOpen && (

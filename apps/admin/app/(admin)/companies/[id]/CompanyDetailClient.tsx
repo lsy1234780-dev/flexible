@@ -17,6 +17,7 @@ import { upsertCompanyProduct, updateCompanyStatus, updateCompany } from '@/acti
 import { addCrmMemo } from '@/actions/orders';
 import CountrySelect from '@/components/CountrySelect';
 import ShareToChat from '@/components/ShareToChat';
+import RecordChatPanel from '@/components/RecordChatPanel';
 import type { Company, CrmLog } from '@/types/database';
 import dayjs from 'dayjs';
 
@@ -731,6 +732,13 @@ export default function CompanyDetailClient({ company, companyProducts, crmLogs,
                 ))}
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* 관련 대화 (역링크) */}
+        <Card>
+          <CardContent className="py-4">
+            <RecordChatPanel entityType="company" entityId={company.id} />
           </CardContent>
         </Card>
       </div>

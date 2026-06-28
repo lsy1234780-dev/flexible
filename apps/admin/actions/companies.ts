@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -173,9 +173,7 @@ export async function updateCompanyStatus(id: string, status: 'pending' | 'activ
 
   // 활성화 전환 시 이메일 발송
   if (status === 'active' && prev?.status !== 'active' && prev?.auth_user_id) {
-    const adminClient = await createAdminClient();
-    const { data: userData } = await adminClient.auth.admin.getUserById(prev.auth_user_id);
-    const email = userData?.user?.email;
+    const { data: email } = await supabase.rpc('get_user_email', { p_user: prev.auth_user_id });
     if (email) {
       await sendWelcome({
         to: email,

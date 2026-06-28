@@ -1,6 +1,6 @@
 'use server';
 
-import { createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 
@@ -9,7 +9,7 @@ import { revalidatePath } from 'next/cache';
 // 출고건 상세 (시리얼 배정 패널용)
 export async function getShipmentDetail(orderId: string) {
   if (process.env.PREVIEW_MODE === 'true') return null;
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data: order } = await supabase
     .from('orders')
@@ -34,7 +34,7 @@ export async function getAvailableSerials(
   limit = 100,
 ) {
   if (process.env.PREVIEW_MODE === 'true') return [];
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('inventory_items')
@@ -57,7 +57,7 @@ export async function autoAssignSerials(
   productId: string,
   quantity: number,
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   // LOT received_at 기준 FIFO
   const { data: serials, error } = await supabase
@@ -114,7 +114,7 @@ export async function assignSerials(
   shipmentId: string,
   items: AssignItem[],
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   if (items.length === 0) return { error: '배정할 시리얼이 없습니다' };
 
@@ -171,7 +171,7 @@ export async function assignSerialsByText(
   productId: string,
   serialTexts: string[],
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   if (serialTexts.length === 0) return { error: '입력된 시리얼이 없습니다' };
 
@@ -254,7 +254,7 @@ export async function matchSerialsAcrossProducts(
   shipmentId: string,
   serialTexts: string[],
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   if (serialTexts.length === 0) return { error: '입력된 시리얼이 없습니다' };
 
@@ -336,7 +336,7 @@ export async function assignQuantityOnly(
   productId: string,
   quantity: number,
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { error } = await supabase
     .from('shipment_serials')
@@ -359,7 +359,7 @@ export async function assignQuantityOnly(
 export async function unassignSerial(
   shipmentSerialId: string,
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data: ss } = await supabase
     .from('shipment_serials')
@@ -390,7 +390,7 @@ export async function unassignSerial(
 // 출고건의 배정된 시리얼 목록 조회
 export async function getShipmentSerials(shipmentId: string) {
   if (process.env.PREVIEW_MODE === 'true') return [];
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('shipment_serials')
@@ -409,7 +409,7 @@ export async function getShipmentSerials(shipmentId: string) {
 // 출고건의 배정된 시리얼 수 조회
 export async function getShipmentSerialCount(shipmentId: string) {
   if (process.env.PREVIEW_MODE === 'true') return { count: 0 };
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { count, error } = await supabase
     .from('shipment_serials')
@@ -422,7 +422,7 @@ export async function getShipmentSerialCount(shipmentId: string) {
 
 // 출고건의 모든 시리얼 배정 초기화
 export async function clearAllShipmentSerials(shipmentId: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   // 배정된 시리얼 ID 조회
   const { data: assigned, error: fetchErr } = await supabase
@@ -461,7 +461,7 @@ export async function updateSerialLevel(
   shipmentId: string,
   level: SerialLevel,
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   // 기존 배정이 있으면 먼저 초기화
   const { count } = await supabase

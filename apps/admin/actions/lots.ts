@@ -1,6 +1,6 @@
 'use server';
 
-import { createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import dayjs from 'dayjs';
@@ -14,7 +14,7 @@ function generateLotNumber(manufacturedAt: string): string {
 
 export async function getLots(productId?: string) {
   if (process.env.PREVIEW_MODE === 'true') return [];
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   let query = supabase
     .from('product_lots')
@@ -37,7 +37,7 @@ export async function getLots(productId?: string) {
 
 export async function getLot(lotId: string) {
   if (process.env.PREVIEW_MODE === 'true') return null;
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('product_lots')
@@ -61,7 +61,7 @@ export async function createLot(input: {
   quantity: number;
   memo?: string;
 }) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   if (!input.product_id) return { error: '제품을 선택하세요' };
   if (!input.manufactured_at) return { error: '제조일을 입력하세요' };
@@ -100,7 +100,7 @@ export async function updateLot(
     memo?: string;
   },
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const updates: Record<string, unknown> = {};
 
@@ -132,7 +132,7 @@ export async function updateLot(
 // ── LOT 삭제 ──
 
 export async function deleteLot(lotId: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   // 해당 LOT에 연결된 시리얼이 있는지 확인
   const { count } = await supabase
@@ -159,7 +159,7 @@ export async function deleteLot(lotId: string) {
 
 export async function getSerialsByLot(lotId: string) {
   if (process.env.PREVIEW_MODE === 'true') return [];
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('inventory_items')
@@ -175,7 +175,7 @@ export async function getSerialsByLot(lotId: string) {
 
 export async function getFifoSerials(productId: string, quantity: number) {
   if (process.env.PREVIEW_MODE === 'true') return [];
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('inventory_items')

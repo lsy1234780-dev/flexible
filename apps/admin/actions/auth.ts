@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { parseRole } from '@/lib/roles';
 import { requireSuperAdmin } from '@/lib/requireSuperAdmin';
@@ -115,31 +115,35 @@ export async function getUserRole(): Promise<UserRole> {
 // 유저 역할 변경 (마스터만 가능)
 export async function updateUserRole(userId: string, department: Department, position: Position) {
   await requireSuperAdmin();
-  const adminClient = await createAdminClient();
+  const supabase = await createClient();
 
-  // 대상 유저의 app_metadata 업데이트
-  const { error } = await adminClient.auth.admin.updateUserById(userId, {
-    app_metadata: { department, position },
+  // 대상 유저의 app_metadata(부서/직급) 업데이트 — anon+RLS(SECURITY DEFINER, 권한 검증 내부)
+  const { error } = await supabase.rpc('set_user_app_role', {
+    p_user: userId,
+    p_department: department,
+    p_position: position,
   });
 
   if (error) return { error: error.message };
   return { success: true };
 }
 
-// 어드민 유저 목록 조회 (역할 관리용)
+// 어드민 유저 목록 조회 (역할 관리용) — 현재 워크스페이스 멤버, anon+RLS(SECURITY DEFINER)
 export async function getAdminUsers() {
   if (process.env.PREVIEW_MODE === 'true') return [];
-  const adminClient = await createAdminClient();
+  const supabase = await createClient();
 
-  const { data, error } = await adminClient.auth.admin.listUsers();
+  const { data, error } = await supabase.rpc('get_workspace_users');
   if (error) throw new Error(error.message);
 
-  // admin 타입 회사에 연결된 유저만 필터 (또는 전체)
-  return data.users.map((u) => ({
+  return (data ?? []).map((u: {
+    id: string; email: string | null; department: string | null;
+    position: string | null; created_at: string; last_sign_in_at: string | null;
+  }) => ({
     id: u.id,
     email: u.email ?? '',
-    department: (u.app_metadata?.department as string) ?? null,
-    position: (u.app_metadata?.position as string) ?? null,
+    department: u.department ?? null,
+    position: u.position ?? null,
     created_at: u.created_at,
     last_sign_in_at: u.last_sign_in_at ?? null,
   }));

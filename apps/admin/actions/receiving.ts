@@ -1,6 +1,6 @@
 'use server';
 
-import { createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import dayjs from 'dayjs';
@@ -9,7 +9,7 @@ import dayjs from 'dayjs';
 
 export async function getReceivingOrders() {
   if (process.env.PREVIEW_MODE === 'true') return [];
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('receiving_orders')
@@ -34,7 +34,7 @@ export async function createReceivingOrder(
   items: { product_id: string; expected_quantity: number }[],
   memo?: string,
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   if (!title.trim()) return { error: '제목을 입력하세요' };
   if (items.length === 0) return { error: '입고 항목을 추가하세요' };
@@ -78,7 +78,7 @@ export async function createReceivingOrder(
 // completed: 시리얼 삭제 + 재고 복원
 
 export async function deleteReceivingOrder(id: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data: order } = await supabase
     .from('receiving_orders')
@@ -159,7 +159,7 @@ export async function confirmReceivingOrder(
   confirmItems: ConfirmationItem[],
   options?: ConfirmOptions,
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
   const workspaceId = await getCurrentWorkspaceId();
   const generateBarcode = options?.generateUnitBarcode ?? false;
   const warehouseId = options?.warehouse_id ?? null;
@@ -435,7 +435,7 @@ export async function confirmReceivingOrder(
 
 export async function getReceivingOrderDetail(id: string) {
   if (process.env.PREVIEW_MODE === 'true') return null;
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('receiving_orders')
@@ -457,7 +457,7 @@ export async function getReceivingOrderDetail(id: string) {
 
 export async function getStagingItems() {
   if (process.env.PREVIEW_MODE === 'true') return [];
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('receiving_staging')
@@ -479,7 +479,7 @@ export async function matchStagingToReceivingItem(
   stagingId: string,
   receivingItemId: string,
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data: staging } = await supabase
     .from('receiving_staging')
@@ -528,7 +528,7 @@ export async function matchStagingToReceivingItem(
 // ── 스테이징 자동매칭 ──
 
 export async function autoMatchStaging() {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data: unmatched } = await supabase
     .from('receiving_staging')
@@ -589,7 +589,7 @@ export async function receiveItems(
   orderId: string,
   items: { receivingItemId: string; quantity: number }[],
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data: order } = await supabase
     .from('receiving_orders')
@@ -651,7 +651,7 @@ export async function receiveItems(
 
 export async function getProductsForReceiving() {
   if (process.env.PREVIEW_MODE === 'true') return [];
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('products')

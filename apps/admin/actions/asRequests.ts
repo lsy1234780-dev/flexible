@@ -1,6 +1,6 @@
 'use server';
 
-import { createAdminClient, createClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { AS_STATUS_LABEL } from '@/lib/asConstants';
@@ -29,7 +29,7 @@ export async function getAsRequests() {
       return override ? { ...r, ...override } : r;
     });
   }
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('as_requests')
@@ -66,7 +66,7 @@ export async function getAsRequest(id: string) {
       as_logs: found.as_logs,
     };
   }
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('as_requests')
@@ -91,7 +91,7 @@ export async function getAsRequest(id: string) {
 
 export async function createAsRequest(formData: FormData) {
   if (process.env.PREVIEW_MODE === 'true') return { error: '미리보기 모드에서는 생성할 수 없습니다' };
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
   const workspaceId = await getCurrentWorkspaceId();
 
   // 채번: AS-YYYY-NNN
@@ -157,7 +157,7 @@ export async function updateAsStatus(
     revalidatePath(`/as/${id}`);
     return {};
   }
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const updates: Record<string, unknown> = { status };
   if (status === 'completed') updates.completed_at = new Date().toISOString();
@@ -206,7 +206,7 @@ export async function updateAsRequest(
     revalidatePath(`/as/${id}`);
     return {};
   }
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { error } = await supabase
     .from('as_requests')
@@ -241,7 +241,7 @@ export async function completeInspection(
     revalidatePath(`/as/${id}`);
     return {};
   }
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const updateData: Record<string, unknown> = {
     inspection_content: inspectionContent,
@@ -274,7 +274,7 @@ export async function completeInspection(
 
 export async function deleteAsRequest(id: string) {
   if (process.env.PREVIEW_MODE === 'true') return { error: '미리보기 모드에서는 삭제할 수 없습니다' };
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
   const { error } = await supabase.from('as_requests').delete().eq('id', id);
   if (error) return { error: error.message };
   revalidatePath('/as');

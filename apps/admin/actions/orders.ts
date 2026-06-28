@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { sendAlert } from '@/lib/email';
@@ -13,7 +13,7 @@ const BRAND_NAME = process.env.EMAIL_BRAND_NAME ?? 'B2B 협력사 포털';
 
 export async function getAdminOrders() {
   if (process.env.PREVIEW_MODE === 'true') return [];
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from('orders')
     .select(`
@@ -45,7 +45,7 @@ function makePreviewOrder(id: string) {
 
 export async function getAdminOrder(slug: string) {
   if (process.env.PREVIEW_MODE === 'true') return makePreviewOrder(slug);
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
   const query = supabase
     .from('orders')
     .select(`
@@ -70,7 +70,7 @@ export async function getAdminOrder(slug: string) {
 // ── CRM 로그 헬퍼 ──
 
 async function logCrm(
-  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   companyId: string,
   orderId: string,
   action: string,
@@ -92,7 +92,7 @@ async function logCrm(
 
 /** pending → confirmed: 재고 원자적 차감 */
 export async function confirmOrder(id: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
   const authClient = await createClient();
 
   // 현재 로그인 사용자 이메일
@@ -144,8 +144,7 @@ export async function confirmOrder(id: string) {
   // B2B 업체에 발주 확정 이메일 발송 (견적서 정보 포함)
   const company = order.companies as unknown as { name: string; auth_user_id: string | null } | null;
   if (company?.auth_user_id) {
-    const { data: userData } = await supabase.auth.admin.getUserById(company.auth_user_id);
-    const email = userData?.user?.email;
+    const { data: email } = await supabase.rpc('get_user_email', { p_user: company.auth_user_id });
     if (email) {
       const quotationNote = quotation
         ? `\n\n견적서(${quotation.number})도 함께 확인하실 수 있습니다.`
@@ -174,7 +173,7 @@ export async function shipOrder(
   id: string,
   options?: { serial_level?: 'L0' | 'L1' | 'L2' | 'L3' },
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data: order } = await supabase
     .from('orders')
@@ -214,7 +213,7 @@ export async function shipOrder(
 
 /** shipped → packed: 집하완료 (물류팀 바코드 스캔 완료) */
 export async function packOrder(id: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data: order } = await supabase
     .from('orders')
@@ -246,7 +245,7 @@ export async function packOrder(id: string) {
 
 /** packed → completed: 출하완료 (어드민/물류 일괄 처리) */
 export async function completeOrder(id: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data: order } = await supabase
     .from('orders')
@@ -278,7 +277,7 @@ export async function completeOrder(id: string) {
 
 /** 출하완료 알림 이메일 발송 (어드민에서 수동 클릭) */
 export async function sendShipmentNotification(orderId: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data: order } = await supabase
     .from('orders')
@@ -291,8 +290,7 @@ export async function sendShipmentNotification(orderId: string) {
   const company = order.companies as unknown as { name: string; auth_user_id: string | null } | null;
   if (!company?.auth_user_id) return { error: '업체에 연결된 계정이 없습니다' };
 
-  const { data: userData } = await supabase.auth.admin.getUserById(company.auth_user_id);
-  const email = userData?.user?.email;
+  const { data: email } = await supabase.rpc('get_user_email', { p_user: company.auth_user_id });
   if (!email) return { error: '업체 이메일을 찾을 수 없습니다' };
 
   const orderLabel = order.order_number ?? order.id.slice(0, 8);
@@ -334,7 +332,7 @@ export async function batchCompleteOrders(ids: string[]) {
 
 /** pending/confirmed → cancelled: 취소 (confirmed면 재고 복원) */
 export async function cancelOrder(id: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data: order } = await supabase
     .from('orders')
@@ -376,7 +374,7 @@ export async function cancelOrder(id: string) {
 
 export async function getCompanyCrmLogs(companyId: string) {
   if (process.env.PREVIEW_MODE === 'true') return [];
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from('crm_logs')
     .select('*, orders(id, status)')
@@ -391,7 +389,7 @@ export async function getCompanyCrmLogs(companyId: string) {
 
 export async function getShippedOrders() {
   if (process.env.PREVIEW_MODE === 'true') return [];
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from('orders')
     .select(`
@@ -408,7 +406,7 @@ export async function getShippedOrders() {
 
 export async function getPackedOrders() {
   if (process.env.PREVIEW_MODE === 'true') return [];
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from('orders')
     .select(`
@@ -425,7 +423,7 @@ export async function getPackedOrders() {
 
 export async function getRecentCompletedOrders(limit = 20) {
   if (process.env.PREVIEW_MODE === 'true') return [];
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from('orders')
     .select(`
@@ -447,7 +445,7 @@ export async function updateOrderItems(
   orderId: string,
   items: { product_id: string; quantity: number; unit_price: number }[],
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   // 발주 상태 확인
   const { data: order } = await supabase
@@ -507,7 +505,7 @@ export async function updateOrderItems(
 
 export async function getLogisticsHistory(limit = 50) {
   if (process.env.PREVIEW_MODE === 'true') return [];
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   // 1. 수동 입출고 이력
   const { data: inventoryLogs } = await supabase
@@ -562,7 +560,7 @@ export async function getLogisticsHistory(limit = 50) {
 }
 
 export async function addCrmMemo(companyId: string, memo: string, orderId?: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
   const { error } = await supabase.from('crm_logs').insert({
     company_id: companyId,
     order_id: orderId ?? null,

@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -161,7 +161,7 @@ export async function directShipProduct(input: {
     return { error: '미리보기 모드에서는 출고처리를 사용할 수 없습니다' };
   }
 
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
   const workspaceId = await getCurrentWorkspaceId();
 
   // 가용 재고 확인

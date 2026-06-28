@@ -1,6 +1,6 @@
 'use server';
 
-import { createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { getStageConfig } from '@/lib/inboundStages';
@@ -91,7 +91,7 @@ export interface UpdateShipmentInput {
 
 export async function getInboundShipments(stageFilter?: string) {
   if (process.env.PREVIEW_MODE === 'true') return [];
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   let query = supabase
     .from('inbound_shipments')
@@ -122,7 +122,7 @@ export async function getInboundShipments(stageFilter?: string) {
 
 export async function getInboundShipmentCounts() {
   if (process.env.PREVIEW_MODE === 'true') return {};
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('inbound_shipments')
@@ -141,7 +141,7 @@ export async function getInboundShipmentCounts() {
 
 export async function getInboundShipmentDetail(id: string) {
   if (process.env.PREVIEW_MODE === 'true') return null;
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('inbound_shipments')
@@ -171,7 +171,7 @@ export async function getInboundShipmentDetail(id: string) {
 // ── 생성 ──
 
 export async function createInboundShipment(input: CreateShipmentInput) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
   const workspaceId = await getCurrentWorkspaceId();
 
   // BL번호 중복 체크
@@ -239,7 +239,7 @@ export async function createInboundShipment(input: CreateShipmentInput) {
 // ── 수정 ──
 
 export async function updateInboundShipment(id: string, input: UpdateShipmentInput | Record<string, unknown>) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   // BL번호 중복 체크
   const blNumber = (input as Record<string, unknown>).bl_number;
@@ -267,7 +267,7 @@ export async function updateInboundShipment(id: string, input: UpdateShipmentInp
 // ── 삭제 ──
 
 export async function deleteInboundShipment(id: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { error } = await supabase
     .from('inbound_shipments')
@@ -283,7 +283,7 @@ export async function deleteInboundShipment(id: string) {
 // ── 스테이지 변경 ──
 
 export async function changeShipmentStage(id: string, newStage: string, memo?: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data: current, error: fetchErr } = await supabase
     .from('inbound_shipments')
@@ -335,7 +335,7 @@ export async function addShipmentItem(
   quantity: number,
   unitCost?: number,
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { error } = await supabase.from('inbound_shipment_items').insert({
     shipment_id: shipmentId,
@@ -354,7 +354,7 @@ export async function updateShipmentItem(
   itemId: string,
   data: { quantity?: number; unit_cost?: number; memo?: string },
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { error } = await supabase
     .from('inbound_shipment_items')
@@ -367,7 +367,7 @@ export async function updateShipmentItem(
 }
 
 export async function removeShipmentItem(itemId: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { error } = await supabase
     .from('inbound_shipment_items')
@@ -386,7 +386,7 @@ export async function addShipmentEvent(
   title: string,
   description?: string,
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { error } = await supabase.from('inbound_shipment_events').insert({
     shipment_id: shipmentId,
@@ -404,7 +404,7 @@ export async function addShipmentEvent(
 // ── 입고지시서 연결 ──
 
 export async function linkReceivingOrder(shipmentId: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data: shipment, error: fetchErr } = await supabase
     .from('inbound_shipments')

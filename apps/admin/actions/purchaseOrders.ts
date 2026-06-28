@@ -1,6 +1,6 @@
 'use server';
 
-import { createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 
@@ -98,7 +98,7 @@ export interface UpdatePurchaseOrderInput {
 
 export async function getPurchaseOrders() {
   if (process.env.PREVIEW_MODE === 'true') return [];
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('purchase_orders')
@@ -128,7 +128,7 @@ export async function getPurchaseOrders() {
 
 export async function getPurchaseOrderDetail(id: string) {
   if (process.env.PREVIEW_MODE === 'true') return null;
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('purchase_orders')
@@ -157,7 +157,7 @@ export async function getPurchaseOrderDetail(id: string) {
 // ── 생성 ──
 
 export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
   const workspaceId = await getCurrentWorkspaceId();
 
   const { data: po, error } = await supabase
@@ -202,7 +202,7 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
 // ── 수정 ──
 
 export async function updatePurchaseOrder(id: string, input: UpdatePurchaseOrderInput | Record<string, unknown>) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { error } = await supabase
     .from('purchase_orders')
@@ -218,7 +218,7 @@ export async function updatePurchaseOrder(id: string, input: UpdatePurchaseOrder
 // ── 삭제 ──
 
 export async function deletePurchaseOrder(id: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { error } = await supabase
     .from('purchase_orders')
@@ -239,7 +239,7 @@ export async function addPurchaseOrderItem(
   quantity: number,
   unitCost?: number,
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { error } = await supabase.from('purchase_order_items').insert({
     purchase_order_id: poId,
@@ -258,7 +258,7 @@ export async function updatePurchaseOrderItem(
   itemId: string,
   data: { quantity?: number; unit_cost?: number; memo?: string },
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { error } = await supabase
     .from('purchase_order_items')
@@ -271,7 +271,7 @@ export async function updatePurchaseOrderItem(
 }
 
 export async function removePurchaseOrderItem(itemId: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { error } = await supabase
     .from('purchase_order_items')
@@ -289,7 +289,7 @@ export async function addPayment(
   poId: string,
   data: { amount: number; method?: string; paid_at: string; label?: string; memo?: string; attachment_url?: string },
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { error } = await supabase.from('purchase_order_payments').insert({
     purchase_order_id: poId,
@@ -312,7 +312,7 @@ export async function addPayment(
 }
 
 export async function removePayment(paymentId: string, poId: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { error } = await supabase
     .from('purchase_order_payments')
@@ -329,7 +329,7 @@ export async function removePayment(paymentId: string, poId: string) {
 
 // payment_status 자동 계산
 async function recalcPaymentStatus(poId: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data: po } = await supabase
     .from('purchase_orders')

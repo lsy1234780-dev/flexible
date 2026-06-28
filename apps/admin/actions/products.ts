@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -93,7 +93,7 @@ export async function createProduct(formData: FormData) {
 
   // base_stock > 0이면 inventory_items 생성 + LOT 자동 부여 + 입출고 이력 기록
   if (parsed.data.base_stock > 0 && product) {
-    const adminClient = await createAdminClient();
+    const adminClient = await createClient();
     const today = dayjs();
     const lotNumber = `LOT-${today.format('YYMMDD')}`;
 

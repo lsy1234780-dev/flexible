@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { sendAlert } from '@/lib/email';
@@ -91,7 +91,6 @@ export async function updateQuotationStatus(id: string, status: 'draft' | 'sent'
 // 특정 견적서를 PDF 생성 + 이메일 발송
 export async function sendQuotationEmail(quotationId: string) {
   const supabase = await createClient();
-  const adminClient = await createAdminClient();
 
   // 견적서 + 업체 + 항목 조회
   const { data: quotation, error: qErr } = await supabase
@@ -141,8 +140,7 @@ export async function sendQuotationEmail(quotationId: string) {
 
   // 이메일 발송 (PDF 첨부)
   if (company?.auth_user_id) {
-    const { data: userData } = await adminClient.auth.admin.getUserById(company.auth_user_id);
-    const email = userData?.user?.email;
+    const { data: email } = await supabase.rpc('get_user_email', { p_user: company.auth_user_id });
     if (email) {
       await sendAlert({
         to: email,
@@ -174,7 +172,7 @@ export async function updateQuotationItems(
   quotationId: string,
   items: { id?: string; product_id: string | null; label: string | null; quantity: number; unit_price: number; is_taxable: boolean }[],
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
   const workspaceId = await getCurrentWorkspaceId();
 
   // 견적서 조회 — 연결된 발주가 있는지 확인

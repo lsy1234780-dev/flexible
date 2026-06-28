@@ -1,6 +1,6 @@
 'use server';
 
-import { createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { getChildType } from '@/lib/warehouseUtils';
@@ -8,7 +8,7 @@ import { getChildType } from '@/lib/warehouseUtils';
 // ── 창고 목록 조회 ──
 
 export async function getWarehouses() {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('warehouses')
@@ -22,7 +22,7 @@ export async function getWarehouses() {
 // ── 창고 상세 조회 ──
 
 export async function getWarehouse(id: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('warehouses')
@@ -47,7 +47,7 @@ export async function createWarehouse(input: {
   manager_contact?: string;
   memo?: string;
 }) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   if (!input.name.trim()) return { error: '창고명을 입력하세요' };
   if (!input.code.trim()) return { error: '창고 코드를 입력하세요' };
@@ -95,7 +95,7 @@ export async function updateWarehouse(
     memo?: string;
   },
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
@@ -127,7 +127,7 @@ export async function updateWarehouse(
 // ── 창고 삭제 ──
 
 export async function deleteWarehouse(id: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   // 배정된 재고가 있는지 확인
   const { count } = await supabase
@@ -153,7 +153,7 @@ export async function deleteWarehouse(id: string) {
 // ── 로케이션 트리 조회 ──
 
 export async function getLocationTree(warehouseId: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('warehouse_locations')
@@ -197,7 +197,7 @@ function buildTree(
 // ── 로케이션 플랫 목록 조회 ──
 
 export async function getLocations(warehouseId: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('warehouse_locations')
@@ -221,7 +221,7 @@ export async function createLocation(input: {
   description?: string;
   sort_order?: number;
 }) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   if (!input.name.trim()) return { error: '이름을 입력하세요' };
   if (!input.code.trim()) return { error: '코드를 입력하세요' };
@@ -277,7 +277,7 @@ export async function updateLocation(
     is_active?: boolean;
   },
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const updates: Record<string, unknown> = {};
 
@@ -304,7 +304,7 @@ export async function updateLocation(
 // ── 로케이션 삭제 ──
 
 export async function deleteLocation(id: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   // 배정된 재고 확인
   const { count } = await supabase
@@ -343,7 +343,7 @@ export async function getInventoryAtLocation(
   warehouseId: string,
   locationId?: string | null,
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   let query = supabase
     .from('inventory_items')
@@ -369,7 +369,7 @@ export async function getWarehouseInventory(
   warehouseId: string,
   locationId?: string | null,
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   let query = supabase
     .from('warehouse_inventory')
@@ -397,7 +397,7 @@ export async function upsertWarehouseInventory(input: {
   quantity: number;
   memo?: string;
 }) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   // 기존 레코드 조회
   let query = supabase
@@ -466,7 +466,7 @@ export async function convertBulkToSerials(input: {
   lot_id?: string | null;
   generate_unit_barcode?: boolean;
 }) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   // 벌크 재고 확인
   const { data: bulk } = await supabase
@@ -536,7 +536,7 @@ export async function moveInventoryItem(
   warehouseId: string,
   locationId?: string | null,
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { error } = await supabase
     .from('inventory_items')
@@ -561,7 +561,7 @@ export async function moveInventoryItemsBatch(
   warehouseId: string,
   locationId?: string | null,
 ) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { error } = await supabase
     .from('inventory_items')
@@ -582,7 +582,7 @@ export async function moveInventoryItemsBatch(
 // ── 창고 목록 (간략 - Select용) ──
 
 export async function getWarehousesForSelect() {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('warehouses')
@@ -597,7 +597,7 @@ export async function getWarehousesForSelect() {
 // ── 로케이션 목록 (간략 - Select용) ──
 
 export async function getLocationsForSelect(warehouseId: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('warehouse_locations')
@@ -615,7 +615,7 @@ export async function getLocationsForSelect(warehouseId: string) {
 // ── 로케이션 카운트 (창고별) ──
 
 export async function getLocationCounts(warehouseId: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('warehouse_locations')
@@ -634,7 +634,7 @@ export async function getLocationCounts(warehouseId: string) {
 // ── 재고 위치 검색 (시리얼/바코드로 찾기) ──
 
 export async function searchInventoryLocation(query: string) {
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   if (!query.trim()) return [];
 

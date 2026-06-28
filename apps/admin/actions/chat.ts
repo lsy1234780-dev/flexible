@@ -40,12 +40,19 @@ export async function markChannelRead(channelId: string) {
 
 // ─── 다이렉트 메시지 ───
 
-export async function getWorkspaceMembers(): Promise<{ user_id: string; name: string; email: string }[]> {
+export interface WorkspaceMember {
+  user_id: string;
+  name: string;
+  email: string;
+  department: string | null;
+}
+
+export async function getWorkspaceMembers(): Promise<WorkspaceMember[]> {
   if (process.env.PREVIEW_MODE === 'true') return [];
   const supabase = await createClient();
   const { data, error } = await supabase.rpc('get_workspace_members');
   if (error) throw new Error(error.message);
-  return data ?? [];
+  return (data ?? []) as WorkspaceMember[];
 }
 
 export async function startDirectMessage(otherUserId: string) {

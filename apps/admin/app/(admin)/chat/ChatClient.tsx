@@ -17,7 +17,7 @@ import { entityHref } from '@/lib/entityLink';
 import { MessageItem, Composer, type Message, type Mention } from '@/components/chat/ChatParts';
 import type { Channel } from './page';
 
-interface Member { user_id: string; name: string; email: string }
+interface Member { user_id: string; name: string; email: string; department: string | null }
 
 interface Props {
   channels: Channel[];
@@ -323,16 +323,25 @@ function ChannelRow({ c, active, onClick, icon }: { c: Channel; active: boolean;
   );
 }
 
-// ─── DM 시작용 멤버 피커 ───
+// ─── DM 시작용 멤버 피커 (검색 + 소속 표시) ───
 function MemberPicker({ onPick }: { onPick: (userId: string) => void }) {
   const [open, setOpen] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [q, setQ] = useState('');
 
   useEffect(() => {
     if (!open || loaded) return;
-    getWorkspaceMembers().then((m) => { setMembers(m); setLoaded(true); });
+    getWorkspaceMembers().then((m) => { setMembers(m as Member[]); setLoaded(true); });
   }, [open, loaded]);
+
+  const ql = q.trim().toLowerCase();
+  const filtered = ql
+    ? members.filter((m) =>
+        m.name.toLowerCase().includes(ql) ||
+        m.email.toLowerCase().includes(ql) ||
+        (m.department ?? '').toLowerCase().includes(ql))
+    : members;
 
   return (
     <div className="relative">
@@ -342,22 +351,36 @@ function MemberPicker({ onPick }: { onPick: (userId: string) => void }) {
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-6 z-20 w-52 rounded-lg border bg-white py-1 shadow-lg">
-            <p className="px-3 py-1 text-[11px] font-semibold text-gray-400">멤버 선택</p>
+          <div className="absolute right-0 top-6 z-20 w-64 rounded-lg border bg-white py-1 shadow-lg">
+            <p className="px-3 pt-1 pb-1.5 text-[11px] font-semibold text-gray-400">멤버 선택</p>
+            <div className="px-2 pb-1.5">
+              <input
+                autoFocus
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="이름·소속 검색…"
+                className="w-full rounded-md border px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-gray-400"
+              />
+            </div>
             <div className="max-h-60 overflow-y-auto">
-              {members.map((m) => (
+              {filtered.map((m) => (
                 <button
                   key={m.user_id}
                   onClick={() => { onPick(m.user_id); setOpen(false); }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-gray-100"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-gray-100"
                 >
-                  <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gray-200 text-[11px] font-medium text-gray-600">
+                  <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gray-200 text-[11px] font-medium text-gray-600">
                     {m.name.slice(0, 1)}
                   </span>
-                  <span className="truncate">{m.name}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-gray-800">{m.name}</span>
+                    <span className="block truncate text-[11px] text-gray-400">{m.department ?? '소속 없음'}</span>
+                  </span>
                 </button>
               ))}
-              {loaded && members.length === 0 && <p className="px-3 py-2 text-xs text-gray-400">다른 멤버가 없습니다</p>}
+              {loaded && filtered.length === 0 && (
+                <p className="px-3 py-2 text-xs text-gray-400">{q ? '검색 결과 없음' : '다른 멤버가 없습니다'}</p>
+              )}
               {!loaded && <p className="px-3 py-2 text-xs text-gray-400">불러오는 중…</p>}
             </div>
           </div>

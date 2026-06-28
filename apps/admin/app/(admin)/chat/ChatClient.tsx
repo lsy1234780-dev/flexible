@@ -6,14 +6,14 @@ import { toast } from 'sonner';
 import dayjs from 'dayjs';
 import {
   Plus, Hash, Send, AtSign, X, SmilePlus, MessageSquare, CornerDownRight,
-  ChevronLeft, User, Pencil, Trash2,
+  ChevronLeft, User, Pencil, Trash2, Bell, AtSign as AtSignIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import {
   getMessages, sendMessage, getMentionCandidates, getMentionCategories, createChannel, getChannels,
   markChannelRead, toggleReaction, getWorkspaceMembers, startDirectMessage,
-  editMessage, deleteMessage, type MentionInput,
+  editMessage, deleteMessage, getMyMentions, type MentionInput, type MyMention,
 } from '@/actions/chat';
 import { entityHref, entityChipClass, ENTITY_LABEL } from '@/lib/entityLink';
 import type { Channel } from './page';
@@ -54,7 +54,14 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
   );
   const [messages, setMessages] = useState<Message[]>([]);
   const [threadParent, setThreadParent] = useState<string | null>(null);
+  const [mentions, setMentions] = useState<MyMention[]>([]);
+  const [mentionsOpen, setMentionsOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const loadMentions = useCallback(async () => {
+    try { setMentions(await getMyMentions()); } catch { /* noop */ }
+  }, []);
+  const unreadMentions = mentions.filter((m) => m.is_unread).length;
 
   const active = channels.find((c) => c.id === activeId) ?? null;
   const publicChannels = channels.filter((c) => c.kind === 'channel');
@@ -92,6 +99,7 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
         } else {
           refreshChannels();
         }
+        loadMentions();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'message_reactions' }, () => {
         if (activeId) loadMessages(activeId);
@@ -99,7 +107,10 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
       .subscribe();
 
     return () => { supabase.removeChannel(rt); };
-  }, [activeId, loadMessages, refreshChannels]);
+  }, [activeId, loadMessages, refreshChannels, loadMentions]);
+
+  // 멘션 알림 최초 로드
+  useEffect(() => { loadMentions(); }, [loadMentions]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
@@ -160,6 +171,51 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
     <div className="flex h-[calc(100vh-3rem)] -m-4 md:-m-6">
       {/* 사이드바 */}
       <aside className="w-56 flex-shrink-0 border-r bg-gray-50 flex flex-col">
+        {/* 상단: 멘션 알림 */}
+        <div className="relative flex items-center justify-between border-b px-3 h-11">
+          <span className="text-sm font-bold text-gray-800">메시지</span>
+          <button
+            onClick={() => setMentionsOpen((v) => !v)}
+            className={cn('relative p-1 rounded transition-colors', mentionsOpen ? 'bg-gray-200 text-gray-800' : 'text-gray-400 hover:text-gray-700')}
+            title="나를 멘션한 메시지"
+          >
+            <Bell size={16} />
+            {unreadMentions > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-semibold leading-none text-white">
+                {unreadMentions > 9 ? '9+' : unreadMentions}
+              </span>
+            )}
+          </button>
+          {mentionsOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setMentionsOpen(false)} />
+              <div className="absolute right-2 top-10 z-20 w-72 rounded-lg border bg-white shadow-xl">
+                <div className="flex items-center gap-1.5 border-b px-3 py-2 text-xs font-semibold text-gray-600">
+                  <AtSignIcon size={13} /> 나를 멘션
+                </div>
+                <div className="max-h-80 overflow-y-auto">
+                  {mentions.length === 0 && <p className="px-3 py-4 text-xs text-gray-400">멘션이 없습니다</p>}
+                  {mentions.map((mn) => (
+                    <button
+                      key={mn.message_id}
+                      onClick={() => { if (mn.channel_id) setActiveId(mn.channel_id); setMentionsOpen(false); }}
+                      className={cn('block w-full border-b px-3 py-2 text-left last:border-0 hover:bg-gray-50', mn.is_unread && 'bg-blue-50/50')}
+                    >
+                      <div className="flex items-center gap-1.5 text-[11px] text-gray-400">
+                        {mn.channel_kind === 'dm' ? <User size={11} /> : <Hash size={11} />}
+                        <span className="truncate">{mn.channel_kind === 'dm' ? 'DM' : (mn.channel_name ?? '채널')}</span>
+                        <span>·</span>
+                        <span className="truncate">{mn.author_name ?? '사용자'}</span>
+                        <span className="ml-auto flex-shrink-0">{dayjs(mn.created_at).format('MM.DD HH:mm')}</span>
+                      </div>
+                      {mn.body && <p className="mt-0.5 line-clamp-2 text-sm text-gray-700">{mn.body}</p>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-4">
           {/* 채널 */}
           <div>

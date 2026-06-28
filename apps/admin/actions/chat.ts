@@ -76,6 +76,26 @@ export async function shareToChat(params: {
   return { success: true, channelId };
 }
 
+// 나(@user)를 멘션한 메시지 알림 (안읽음 여부 포함)
+export interface MyMention {
+  message_id: string;
+  channel_id: string | null;
+  channel_name: string | null;
+  channel_kind: string | null;
+  author_name: string | null;
+  body: string;
+  created_at: string;
+  is_unread: boolean;
+}
+
+export async function getMyMentions(): Promise<MyMention[]> {
+  if (process.env.PREVIEW_MODE === 'true') return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('get_my_mentions', { p_limit: 20 });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as MyMention[];
+}
+
 // 이 레코드를 멘션한 대화들 (역링크 — 레코드 화면의 "관련 대화" 패널).
 // RLS(mentions_select)가 내가 볼 수 있는 메시지의 멘션만 반환 → 남의 DM은 자동 제외.
 export interface RecordMention {

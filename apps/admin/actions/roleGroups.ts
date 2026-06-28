@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { requireSuperAdmin } from '@/lib/requireSuperAdmin';
@@ -20,7 +20,7 @@ export async function getRoleGroups() {
 // 그룹 생성
 export async function createRoleGroup(name: string, description: string, allowedMenus: string[]) {
   await requireSuperAdmin();
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const { data, error } = await admin
     .from('role_groups')
@@ -40,7 +40,7 @@ export async function createRoleGroup(name: string, description: string, allowed
 // 그룹 수정
 export async function updateRoleGroup(id: string, name: string, description: string, allowedMenus: string[]) {
   await requireSuperAdmin();
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const { error } = await admin
     .from('role_groups')
@@ -56,7 +56,7 @@ export async function updateRoleGroup(id: string, name: string, description: str
 // 그룹 삭제
 export async function deleteRoleGroup(id: string) {
   await requireSuperAdmin();
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   // 매핑도 CASCADE로 삭제됨
   const { error } = await admin
@@ -98,7 +98,7 @@ export async function getAllUserRoleGroups() {
 // 유저에 그룹 배정
 export async function assignRoleGroup(userId: string, roleGroupId: string) {
   await requireSuperAdmin();
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const { error } = await admin
     .from('user_role_groups')
@@ -116,7 +116,7 @@ export async function assignRoleGroup(userId: string, roleGroupId: string) {
 // 유저에서 그룹 제거
 export async function removeRoleGroup(userId: string, roleGroupId: string) {
   await requireSuperAdmin();
-  const admin = createAdminClient();
+  const admin = await createClient();
 
   const { error } = await admin
     .from('user_role_groups')

@@ -1,4 +1,4 @@
-import { createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { generateQuotationBuffer } from '@/lib/pdf';
 import type { QuotationData } from '@/lib/pdf';
 
@@ -17,7 +17,7 @@ export async function GET(
     return new Response(html, { headers: { 'Content-Type': 'text/html' } });
   }
 
-  const supabase = await createAdminClient();
+  const supabase = await createClient();
 
   const { data: quotation, error } = await supabase
     .from('quotations')

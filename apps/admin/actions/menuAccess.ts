@@ -1,6 +1,7 @@
 'use server';
 
-import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
+import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { requireSuperAdmin } from '@/lib/requireSuperAdmin';
 
@@ -27,18 +28,20 @@ export async function getMenuAccessRules(): Promise<MenuAccessRule[]> {
 // 메뉴 접근 규칙 일괄 저장 (upsert)
 export async function saveMenuAccessRules(rules: MenuAccessRule[]) {
   await requireSuperAdmin();
-  const admin = createAdminClient();
+  const supabase = await createClient();
+  const workspaceId = await getCurrentWorkspaceId();
 
-  const { error } = await admin
+  const { error } = await supabase
     .from('menu_access_rules')
     .upsert(
       rules.map((r) => ({
+        workspace_id: workspaceId,
         menu_href: r.menu_href,
         allowed_departments: r.allowed_departments,
         allowed_positions: r.allowed_positions,
         updated_at: new Date().toISOString(),
       })),
-      { onConflict: 'menu_href' },
+      { onConflict: 'workspace_id,menu_href' },
     );
 
   if (error) return { error: error.message };

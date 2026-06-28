@@ -1,6 +1,7 @@
 'use server';
 
-import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
+import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { parseRole } from '@/lib/roles';
 
@@ -22,7 +23,6 @@ export async function getSuperAdminMinLevel(): Promise<number> {
 
 export async function updateSuperAdminMinLevel(newLevel: number) {
   const supabase = await createClient();
-  const admin = createAdminClient();
 
   // 현재 유저 권한 확인
   const { data: { user } } = await supabase.auth.getUser();
@@ -50,9 +50,12 @@ export async function updateSuperAdminMinLevel(newLevel: number) {
   if (newLevel < 1) return { error: '레벨은 1 이상이어야 합니다' };
 
   // 저장
-  const { error } = await admin
+  const { error } = await supabase
     .from('system_settings')
-    .upsert({ key: 'super_admin_min_level', value: String(newLevel), updated_at: new Date().toISOString() });
+    .upsert(
+      { workspace_id: await getCurrentWorkspaceId(), key: 'super_admin_min_level', value: String(newLevel), updated_at: new Date().toISOString() },
+      { onConflict: 'workspace_id,key' },
+    );
 
   if (error) return { error: error.message };
 

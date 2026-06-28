@@ -17,29 +17,41 @@ export async function getChannels() {
   if (process.env.PREVIEW_MODE === 'true') return [];
   const supabase = await createClient();
 
-  let { data, error } = await supabase.from('channels').select('*').order('created_at');
+  // 공개 채널 + 내 DM (상대 이름 + 안읽음 포함)
+  let { data, error } = await supabase.rpc('get_my_channels');
   if (error) throw new Error(error.message);
 
   // chat 모듈 켜고 처음 들어오면 #general 자동 생성(멱등)
   if (!data || data.length === 0) {
     const ws = await getCurrentWorkspaceId();
     await supabase.rpc('seed_default_channels', { p_ws: ws });
-    ({ data, error } = await supabase.from('channels').select('*').order('created_at'));
+    ({ data, error } = await supabase.rpc('get_my_channels'));
     if (error) throw new Error(error.message);
   }
-
-  // 안읽음 개수 병합
-  const { data: unreads } = await supabase.rpc('get_channel_unreads');
-  const unreadMap = new Map<string, number>(
-    (unreads ?? []).map((u: { channel_id: string; unread: number }) => [u.channel_id, Number(u.unread)]),
-  );
-  return (data ?? []).map((c) => ({ ...c, unread: unreadMap.get(c.id) ?? 0 }));
+  return data ?? [];
 }
 
 // 채널 진입 시 읽음 처리
 export async function markChannelRead(channelId: string) {
   const supabase = await createClient();
   await supabase.rpc('mark_channel_read', { p_channel: channelId });
+}
+
+// ─── 다이렉트 메시지 ───
+
+export async function getWorkspaceMembers(): Promise<{ user_id: string; name: string; email: string }[]> {
+  if (process.env.PREVIEW_MODE === 'true') return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('get_workspace_members');
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+export async function startDirectMessage(otherUserId: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('get_or_create_dm', { p_other: otherUserId });
+  if (error) return { error: error.message };
+  return { success: true, id: data as string };
 }
 
 export async function createChannel(name: string) {
@@ -140,37 +152,62 @@ export async function toggleReaction(messageId: string, emoji: string) {
   return { success: true, removed: false };
 }
 
-// ─── 엔티티 멘션 검색 (켜진 모듈의 레코드만 — 비전 핵심) ───
+// ─── 엔티티 멘션 (모듈별 카테고리 → 타입별 리스트) — 비전 핵심 ───
 
-export async function getMentionCandidates(query: string): Promise<MentionInput[]> {
-  const q = query.trim();
-  if (q.length < 1) return [];
+// 모듈 ↔ 엔티티 카테고리 매핑. 켜진 모듈의 카테고리만 멘션 메뉴에 노출된다.
+const MENTION_CATEGORIES = [
+  { module: 'partners', type: 'company', label: '거래처' },
+  { module: 'crm_pipeline', type: 'deal', label: '딜' },
+  { module: 'products', type: 'product', label: '제품' },
+  { module: 'orders', type: 'order', label: '수주' },
+] as const;
+
+// @ 클릭 시 뜨는 카테고리 메뉴 (워크스페이스에서 켜진 모듈만)
+export async function getMentionCategories(): Promise<{ type: string; label: string }[]> {
   if (process.env.PREVIEW_MODE === 'true') return [];
-
-  const supabase = await createClient();
   const enabled = await getEnabledModules();
-  const results: MentionInput[] = [];
+  return MENTION_CATEGORIES
+    .filter((c) => enabled.includes(c.module))
+    .map(({ type, label }) => ({ type, label }));
+}
 
-  // partners 모듈 → 거래처
-  if (enabled.includes('partners')) {
-    const { data } = await supabase.from('companies').select('id, name').ilike('name', `%${q}%`).limit(5);
-    for (const c of data ?? []) results.push({ entity_type: 'company', entity_id: c.id, label: c.name });
-  }
-  // crm_pipeline 모듈 → 딜
-  if (enabled.includes('crm_pipeline')) {
-    const { data } = await supabase.from('deals').select('id, title').ilike('title', `%${q}%`).limit(5);
-    for (const d of data ?? []) results.push({ entity_type: 'deal', entity_id: d.id, label: d.title });
-  }
-  // products 모듈 → 제품
-  if (enabled.includes('products')) {
-    const { data } = await supabase.from('products').select('id, name').ilike('name', `%${q}%`).limit(5);
-    for (const p of data ?? []) results.push({ entity_type: 'product', entity_id: p.id, label: p.name });
-  }
-  // orders 모듈 → 수주
-  if (enabled.includes('orders')) {
-    const { data } = await supabase.from('orders').select('id, order_number').ilike('order_number', `%${q}%`).limit(5);
-    for (const o of data ?? []) results.push({ entity_type: 'order', entity_id: o.id, label: o.order_number ?? o.id.slice(0, 8) });
-  }
+// 특정 카테고리(type) 안에서 검색. query 비면 최근 항목.
+export async function getMentionCandidates(query: string, type: string): Promise<MentionInput[]> {
+  if (process.env.PREVIEW_MODE === 'true') return [];
+  const supabase = await createClient();
+  const q = query.trim();
+  const N = 8;
 
-  return results.slice(0, 12);
+  switch (type) {
+    case 'company': {
+      const base = supabase.from('companies').select('id, name');
+      const { data } = await (q
+        ? base.ilike('name', `%${q}%`).limit(N)
+        : base.order('created_at', { ascending: false }).limit(N));
+      return (data ?? []).map((c) => ({ entity_type: 'company', entity_id: c.id, label: c.name }));
+    }
+    case 'deal': {
+      const base = supabase.from('deals').select('id, title');
+      const { data } = await (q
+        ? base.ilike('title', `%${q}%`).limit(N)
+        : base.order('updated_at', { ascending: false }).limit(N));
+      return (data ?? []).map((d) => ({ entity_type: 'deal', entity_id: d.id, label: d.title }));
+    }
+    case 'product': {
+      const base = supabase.from('products').select('id, name');
+      const { data } = await (q
+        ? base.ilike('name', `%${q}%`).limit(N)
+        : base.order('created_at', { ascending: false }).limit(N));
+      return (data ?? []).map((p) => ({ entity_type: 'product', entity_id: p.id, label: p.name }));
+    }
+    case 'order': {
+      const base = supabase.from('orders').select('id, order_number');
+      const { data } = await (q
+        ? base.ilike('order_number', `%${q}%`).limit(N)
+        : base.order('created_at', { ascending: false }).limit(N));
+      return (data ?? []).map((o) => ({ entity_type: 'order', entity_id: o.id, label: o.order_number ?? o.id.slice(0, 8) }));
+    }
+    default:
+      return [];
+  }
 }

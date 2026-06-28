@@ -19,5 +19,6 @@ export interface Channel {
   id: string;
   name: string;
   kind: string;
+  partner_name?: string | null;
   unread?: number;
 }

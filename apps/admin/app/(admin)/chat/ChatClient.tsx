@@ -4,12 +4,15 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import dayjs from 'dayjs';
-import { Plus, Hash, Send, AtSign, X, SmilePlus, MessageSquare, CornerDownRight } from 'lucide-react';
+import {
+  Plus, Hash, Send, AtSign, X, SmilePlus, MessageSquare, CornerDownRight,
+  ChevronLeft, User,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import {
-  getMessages, sendMessage, getMentionCandidates, createChannel, getChannels,
-  markChannelRead, toggleReaction, type MentionInput,
+  getMessages, sendMessage, getMentionCandidates, getMentionCategories, createChannel, getChannels,
+  markChannelRead, toggleReaction, getWorkspaceMembers, startDirectMessage, type MentionInput,
 } from '@/actions/chat';
 import { entityHref, entityChipClass, ENTITY_LABEL } from '@/lib/entityLink';
 import type { Channel } from './page';
@@ -28,12 +31,15 @@ interface Message {
   message_mentions: Mention[];
   message_reactions: Reaction[];
 }
+interface Member { user_id: string; name: string; email: string }
 
 interface Props {
   channels: Channel[];
   meId: string | null;
   meName: string;
 }
+
+const channelLabel = (c: Channel) => (c.kind === 'dm' ? (c.partner_name ?? '다이렉트 메시지') : c.name);
 
 export default function ChatClient({ channels: initialChannels, meId, meName }: Props) {
   const router = useRouter();
@@ -44,6 +50,8 @@ export default function ChatClient({ channels: initialChannels, meId, meName }: 
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const active = channels.find((c) => c.id === activeId) ?? null;
+  const publicChannels = channels.filter((c) => c.kind === 'channel');
+  const dms = channels.filter((c) => c.kind === 'dm');
 
   const loadMessages = useCallback(async (channelId: string) => {
     const rows = await getMessages(channelId);
@@ -92,7 +100,7 @@ export default function ChatClient({ channels: initialChannels, meId, meName }: 
     if (!activeId) return;
     const result = await sendMessage(activeId, body, mentions, replyTo);
     if (result?.error) { toast.error(result.error); return; }
-    loadMessages(activeId); // 내 화면 즉시 갱신(상대는 realtime)
+    loadMessages(activeId);
   }
 
   async function handleReact(messageId: string, emoji: string) {
@@ -110,6 +118,13 @@ export default function ChatClient({ channels: initialChannels, meId, meName }: 
     if (result.id) setActiveId(result.id);
   }
 
+  async function handleStartDM(userId: string) {
+    const result = await startDirectMessage(userId);
+    if (result?.error) { toast.error(result.error); return; }
+    await refreshChannels();
+    if (result.id) setActiveId(result.id);
+  }
+
   const topLevel = messages.filter((m) => !m.reply_to);
   const replyCount = (parentId: string) => messages.filter((m) => m.reply_to === parentId).length;
   const threadMsg = threadParent ? messages.find((m) => m.id === threadParent) ?? null : null;
@@ -117,47 +132,46 @@ export default function ChatClient({ channels: initialChannels, meId, meName }: 
 
   return (
     <div className="flex h-[calc(100vh-3rem)] -m-4 md:-m-6">
-      {/* 채널 목록 */}
+      {/* 사이드바 */}
       <aside className="w-56 flex-shrink-0 border-r bg-gray-50 flex flex-col">
-        <div className="flex items-center justify-between px-3 h-12 border-b">
-          <span className="text-sm font-semibold text-gray-700">채널</span>
-          <button onClick={handleCreateChannel} className="p-1 text-gray-400 hover:text-gray-700" title="채널 추가">
-            <Plus size={16} />
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
-          {channels.map((c) => {
-            const unread = c.unread ?? 0;
-            const isActive = activeId === c.id;
-            return (
-              <button
-                key={c.id}
-                onClick={() => setActiveId(c.id)}
-                className={cn(
-                  'flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-sm transition-colors',
-                  isActive ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-200',
-                  !isActive && unread > 0 && 'font-semibold text-gray-900',
-                )}
-              >
-                <Hash size={14} className="flex-shrink-0 opacity-60" />
-                <span className="truncate flex-1 text-left">{c.name}</span>
-                {!isActive && unread > 0 && (
-                  <span className="flex-shrink-0 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
-                    {unread > 99 ? '99+' : unread}
-                  </span>
-                )}
+        <div className="flex-1 overflow-y-auto p-2 space-y-4">
+          {/* 채널 */}
+          <div>
+            <div className="flex items-center justify-between px-2 mb-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">채널</span>
+              <button onClick={handleCreateChannel} className="p-0.5 text-gray-400 hover:text-gray-700" title="채널 추가">
+                <Plus size={14} />
               </button>
-            );
-          })}
-          {channels.length === 0 && <p className="px-2 py-4 text-xs text-gray-400">채널이 없습니다</p>}
+            </div>
+            <div className="space-y-0.5">
+              {publicChannels.map((c) => (
+                <ChannelRow key={c.id} c={c} active={activeId === c.id} onClick={() => setActiveId(c.id)} icon={<Hash size={14} className="flex-shrink-0 opacity-60" />} />
+              ))}
+              {publicChannels.length === 0 && <p className="px-2 py-2 text-xs text-gray-400">채널 없음</p>}
+            </div>
+          </div>
+
+          {/* 다이렉트 메시지 */}
+          <div>
+            <div className="flex items-center justify-between px-2 mb-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">다이렉트 메시지</span>
+              <MemberPicker onPick={handleStartDM} />
+            </div>
+            <div className="space-y-0.5">
+              {dms.map((c) => (
+                <ChannelRow key={c.id} c={c} active={activeId === c.id} onClick={() => setActiveId(c.id)} icon={<User size={14} className="flex-shrink-0 opacity-60" />} />
+              ))}
+              {dms.length === 0 && <p className="px-2 py-2 text-xs text-gray-400">대화 없음</p>}
+            </div>
+          </div>
         </div>
       </aside>
 
       {/* 메시지 영역 */}
       <section className="flex-1 flex flex-col min-w-0">
         <div className="flex items-center gap-1.5 px-4 h-12 border-b">
-          <Hash size={16} className="text-gray-400" />
-          <span className="font-semibold text-gray-900">{active?.name ?? '채널 선택'}</span>
+          {active?.kind === 'dm' ? <User size={16} className="text-gray-400" /> : <Hash size={16} className="text-gray-400" />}
+          <span className="font-semibold text-gray-900">{active ? channelLabel(active) : '채널 선택'}</span>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
@@ -181,7 +195,7 @@ export default function ChatClient({ channels: initialChannels, meId, meName }: 
 
         {activeId && (
           <Composer
-            placeholder={`#${active?.name ?? ''} 에 메시지…`}
+            placeholder={active?.kind === 'dm' ? `${channelLabel(active)} 에게 메시지…` : `#${active ? channelLabel(active) : ''} 에 메시지…`}
             onSend={(body, mentions) => handleSend(body, mentions, null)}
           />
         )}
@@ -217,6 +231,73 @@ export default function ChatClient({ channels: initialChannels, meId, meName }: 
   );
 }
 
+// ─── 채널/DM 한 줄 ───
+function ChannelRow({ c, active, onClick, icon }: { c: Channel; active: boolean; onClick: () => void; icon: React.ReactNode }) {
+  const unread = c.unread ?? 0;
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-sm transition-colors',
+        active ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-200',
+        !active && unread > 0 && 'font-semibold text-gray-900',
+      )}
+    >
+      {icon}
+      <span className="truncate flex-1 text-left">{channelLabel(c)}</span>
+      {!active && unread > 0 && (
+        <span className="flex-shrink-0 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+          {unread > 99 ? '99+' : unread}
+        </span>
+      )}
+    </button>
+  );
+}
+
+// ─── DM 시작용 멤버 피커 ───
+function MemberPicker({ onPick }: { onPick: (userId: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!open || loaded) return;
+    getWorkspaceMembers().then((m) => { setMembers(m); setLoaded(true); });
+  }, [open, loaded]);
+
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen((v) => !v)} className="p-0.5 text-gray-400 hover:text-gray-700" title="새 메시지">
+        <Plus size={14} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-6 z-20 w-52 rounded-lg border bg-white py-1 shadow-lg">
+            <p className="px-3 py-1 text-[11px] font-semibold text-gray-400">멤버 선택</p>
+            <div className="max-h-60 overflow-y-auto">
+              {members.map((m) => (
+                <button
+                  key={m.user_id}
+                  onClick={() => { onPick(m.user_id); setOpen(false); }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-gray-100"
+                >
+                  <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gray-200 text-[11px] font-medium text-gray-600">
+                    {m.name.slice(0, 1)}
+                  </span>
+                  <span className="truncate">{m.name}</span>
+                </button>
+              ))}
+              {loaded && members.length === 0 && <p className="px-3 py-2 text-xs text-gray-400">다른 멤버가 없습니다</p>}
+              {!loaded && <p className="px-3 py-2 text-xs text-gray-400">불러오는 중…</p>}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── 메시지 한 줄 ───
 interface MessageItemProps {
   m: Message;
@@ -232,7 +313,6 @@ function MessageItem({ m, meId, meName, onReact, onJump, onOpenThread, replyCoun
   const [pickerOpen, setPickerOpen] = useState(false);
   const mine = m.author_id === meId;
 
-  // 반응 집계
   const agg = new Map<string, { count: number; mine: boolean }>();
   for (const r of m.message_reactions ?? []) {
     const cur = agg.get(r.emoji) ?? { count: 0, mine: false };
@@ -246,8 +326,6 @@ function MessageItem({ m, meId, meName, onReact, onJump, onOpenThread, replyCoun
       <div className="flex items-baseline gap-2">
         <span className="text-sm font-semibold text-gray-900">{mine ? meName : (m.author_name ?? '사용자')}</span>
         <span className="text-[11px] text-gray-400">{dayjs(m.created_at).format('MM.DD HH:mm')}</span>
-
-        {/* 호버 액션 */}
         <span className="ml-auto hidden group-hover:flex items-center gap-1">
           <button onClick={() => setPickerOpen((v) => !v)} className="p-1 text-gray-400 hover:text-gray-700" title="반응 추가">
             <SmilePlus size={14} />
@@ -262,7 +340,6 @@ function MessageItem({ m, meId, meName, onReact, onJump, onOpenThread, replyCoun
 
       {m.body && <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">{m.body}</p>}
 
-      {/* 엔티티 멘션 칩 */}
       {m.message_mentions?.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1">
           {m.message_mentions.map((mn, i) => (
@@ -279,7 +356,6 @@ function MessageItem({ m, meId, meName, onReact, onJump, onOpenThread, replyCoun
         </div>
       )}
 
-      {/* 반응 칩 */}
       {(agg.size > 0 || pickerOpen) && (
         <div className="mt-1 flex flex-wrap items-center gap-1">
           {[...agg.entries()].map(([emoji, info]) => (
@@ -298,11 +374,7 @@ function MessageItem({ m, meId, meName, onReact, onJump, onOpenThread, replyCoun
           {pickerOpen && (
             <span className="inline-flex items-center gap-0.5 rounded-full border border-gray-200 bg-white px-1 py-0.5">
               {EMOJIS.map((e) => (
-                <button
-                  key={e}
-                  onClick={() => { onReact(m.id, e); setPickerOpen(false); }}
-                  className="rounded px-1 text-sm hover:bg-gray-100"
-                >
+                <button key={e} onClick={() => { onReact(m.id, e); setPickerOpen(false); }} className="rounded px-1 text-sm hover:bg-gray-100">
                   {e}
                 </button>
               ))}
@@ -311,12 +383,8 @@ function MessageItem({ m, meId, meName, onReact, onJump, onOpenThread, replyCoun
         </div>
       )}
 
-      {/* 스레드 답글 수 */}
       {onOpenThread && replyCount > 0 && (
-        <button
-          onClick={onOpenThread}
-          className="mt-1 inline-flex w-fit items-center gap-1 rounded text-xs font-medium text-blue-600 hover:underline"
-        >
+        <button onClick={onOpenThread} className="mt-1 inline-flex w-fit items-center gap-1 rounded text-xs font-medium text-blue-600 hover:underline">
           <MessageSquare size={12} />
           답글 {replyCount}개
         </button>
@@ -325,7 +393,7 @@ function MessageItem({ m, meId, meName, onReact, onJump, onOpenThread, replyCoun
   );
 }
 
-// ─── 작성 컴포넌트 (채널/스레드 공용) ───
+// ─── 작성 컴포넌트 (채널/스레드 공용) — 엔티티 멘션 2단 메뉴 ───
 interface ComposerProps {
   placeholder: string;
   onSend: (body: string, mentions: Mention[]) => Promise<void> | void;
@@ -335,26 +403,51 @@ function Composer({ placeholder, onSend }: ComposerProps) {
   const [body, setBody] = useState('');
   const [pending, setPending] = useState<Mention[]>([]);
   const [sending, setSending] = useState(false);
-  const [mentionOpen, setMentionOpen] = useState(false);
-  const [mentionQuery, setMentionQuery] = useState('');
-  const [candidates, setCandidates] = useState<MentionInput[]>([]);
 
+  // 멘션 메뉴: open → (카테고리 선택) → 항목 리스트
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [categories, setCategories] = useState<{ type: string; label: string }[] | null>(null);
+  const [activeCat, setActiveCat] = useState<{ type: string; label: string } | null>(null);
+  const [query, setQuery] = useState('');
+  const [items, setItems] = useState<MentionInput[]>([]);
+
+  // 메뉴 열면 카테고리 로드
   useEffect(() => {
-    if (!mentionOpen) return;
+    if (!menuOpen || categories) return;
+    getMentionCategories().then(setCategories);
+  }, [menuOpen, categories]);
+
+  // 카테고리 선택/검색어 변경 → 항목 로드 (디바운스)
+  useEffect(() => {
+    if (!activeCat) return;
     const t = setTimeout(async () => {
-      const rows = await getMentionCandidates(mentionQuery);
-      setCandidates(rows);
-    }, 200);
+      const rows = await getMentionCandidates(query, activeCat.type);
+      setItems(rows);
+    }, 180);
     return () => clearTimeout(t);
-  }, [mentionQuery, mentionOpen]);
+  }, [activeCat, query]);
+
+  function openMenu() {
+    setMenuOpen((v) => !v);
+    setActiveCat(null);
+    setQuery('');
+    setItems([]);
+  }
+
+  function selectCategory(cat: { type: string; label: string }) {
+    setActiveCat(cat);
+    setQuery('');
+    setItems([]);
+  }
 
   function addMention(m: MentionInput) {
     if (!pending.some((p) => p.entity_type === m.entity_type && p.entity_id === m.entity_id)) {
       setPending((prev) => [...prev, m]);
     }
-    setMentionOpen(false);
-    setMentionQuery('');
-    setCandidates([]);
+    setMenuOpen(false);
+    setActiveCat(null);
+    setQuery('');
+    setItems([]);
   }
 
   async function submit() {
@@ -372,6 +465,7 @@ function Composer({ placeholder, onSend }: ComposerProps) {
         <div className="mb-2 flex flex-wrap gap-1">
           {pending.map((m, i) => (
             <span key={i} className={cn('inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs', entityChipClass(m.entity_type))}>
+              <span className="opacity-60">{ENTITY_LABEL[m.entity_type] ?? m.entity_type}</span>
               {m.label}
               <button onClick={() => setPending((prev) => prev.filter((_, j) => j !== i))} className="hover:opacity-70">
                 <X size={11} />
@@ -381,37 +475,65 @@ function Composer({ placeholder, onSend }: ComposerProps) {
         </div>
       )}
 
-      {mentionOpen && (
-        <div className="absolute bottom-full left-3 mb-1 w-72 rounded-lg border bg-white shadow-lg">
-          <input
-            autoFocus
-            value={mentionQuery}
-            onChange={(e) => setMentionQuery(e.target.value)}
-            placeholder="거래처·딜·제품·수주 검색…"
-            className="w-full border-b px-3 py-2 text-sm outline-none"
-          />
-          <div className="max-h-56 overflow-y-auto">
-            {candidates.map((c) => (
-              <button
-                key={`${c.entity_type}-${c.entity_id}`}
-                onClick={() => addMention(c)}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100"
-              >
-                <span className={cn('rounded border px-1.5 py-0.5 text-[10px]', entityChipClass(c.entity_type))}>
-                  {ENTITY_LABEL[c.entity_type] ?? c.entity_type}
-                </span>
-                <span className="truncate">{c.label}</span>
-              </button>
-            ))}
-            {mentionQuery && candidates.length === 0 && <p className="px-3 py-3 text-xs text-gray-400">결과 없음</p>}
-          </div>
+      {/* 멘션 메뉴 (2단) */}
+      {menuOpen && (
+        <div className="absolute bottom-full left-3 mb-1 w-72 rounded-lg border bg-white shadow-lg overflow-hidden">
+          {!activeCat ? (
+            <div className="py-1">
+              <p className="px-3 py-1 text-[11px] font-semibold text-gray-400">무엇을 멘션할까요?</p>
+              {(categories ?? []).map((cat) => (
+                <button
+                  key={cat.type}
+                  onClick={() => selectCategory(cat)}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100"
+                >
+                  <span className={cn('rounded border px-1.5 py-0.5 text-[10px]', entityChipClass(cat.type))}>{cat.label}</span>
+                  <span className="text-gray-700">{cat.label} 멘션</span>
+                </button>
+              ))}
+              {categories && categories.length === 0 && (
+                <p className="px-3 py-3 text-xs text-gray-400">멘션 가능한 모듈이 없습니다</p>
+              )}
+              {!categories && <p className="px-3 py-3 text-xs text-gray-400">불러오는 중…</p>}
+            </div>
+          ) : (
+            <div>
+              <div className="flex items-center gap-1 border-b px-2 py-1.5">
+                <button onClick={() => setActiveCat(null)} className="p-1 text-gray-400 hover:text-gray-700">
+                  <ChevronLeft size={14} />
+                </button>
+                <span className={cn('rounded border px-1.5 py-0.5 text-[10px]', entityChipClass(activeCat.type))}>{activeCat.label}</span>
+                <input
+                  autoFocus
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={`${activeCat.label} 검색…`}
+                  className="flex-1 px-1 py-0.5 text-sm outline-none"
+                />
+              </div>
+              <div className="max-h-56 overflow-y-auto py-1">
+                {items.map((c) => (
+                  <button
+                    key={`${c.entity_type}-${c.entity_id}`}
+                    onClick={() => addMention(c)}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100"
+                  >
+                    <span className="truncate">{c.label}</span>
+                  </button>
+                ))}
+                {items.length === 0 && (
+                  <p className="px-3 py-3 text-xs text-gray-400">{query ? '결과 없음' : '항목이 없습니다'}</p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       <div className="flex items-end gap-2">
         <button
-          onClick={() => setMentionOpen((v) => !v)}
-          className={cn('flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border transition-colors', mentionOpen ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100')}
+          onClick={openMenu}
+          className={cn('flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border transition-colors', menuOpen ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100')}
           title="엔티티 멘션 (거래처/딜/제품/수주 태그)"
         >
           <AtSign size={16} />

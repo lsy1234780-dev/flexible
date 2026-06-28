@@ -55,6 +55,27 @@ export async function startDirectMessage(otherUserId: string) {
   return { success: true, id: data as string };
 }
 
+// ─── 레코드 → 채팅 공유 (역방향) ───
+// 어느 레코드 화면이든 <ShareToChat>가 호출. 엔티티를 멘션으로 붙인 메시지를
+// 지정 채널 또는 사람(DM)에게 메모와 함께 전송한다.
+export async function shareToChat(params: {
+  dest: { type: 'channel' | 'user'; id: string };
+  note: string;
+  mention: MentionInput;
+}) {
+  let channelId: string;
+  if (params.dest.type === 'user') {
+    const dm = await startDirectMessage(params.dest.id);
+    if ('error' in dm || !dm.id) return { error: ('error' in dm && dm.error) || 'DM 생성 실패' };
+    channelId = dm.id;
+  } else {
+    channelId = params.dest.id;
+  }
+  const res = await sendMessage(channelId, params.note ?? '', [params.mention]);
+  if (res?.error) return { error: res.error };
+  return { success: true, channelId };
+}
+
 export async function createChannel(name: string) {
   const clean = name.trim().replace(/^#/, '').replace(/\s+/g, '-').toLowerCase();
   if (!clean) return { error: '채널 이름을 입력하세요' };

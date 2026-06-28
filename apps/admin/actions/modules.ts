@@ -18,23 +18,14 @@ export async function getEnabledModules(): Promise<string[]> {
   return (data ?? []).map((r) => r.module_key as string);
 }
 
-// 모듈 토글 (켜기/끄기) — 관리자만. 의존성 검증은 후속 작업.
+// 모듈 토글 (켜기/끄기) — 워크스페이스 오너/관리자만.
+// anon+RLS(SECURITY DEFINER 함수) — service role 미사용. 권한 검증은 함수 내부에서.
 export async function setModuleEnabled(moduleKey: string, enabled: boolean) {
-  const { requireSuperAdmin } = await import('@/lib/requireSuperAdmin');
-  await requireSuperAdmin();
-
-  const { createAdminClient } = await import('@/lib/supabase/server');
-  const { getCurrentWorkspaceId } = await import('@/lib/workspace');
-  const admin = createAdminClient();
-  const workspaceId = await getCurrentWorkspaceId();
-
-  const { error } = await admin
-    .from('workspace_modules')
-    .upsert(
-      { workspace_id: workspaceId, module_key: moduleKey, enabled },
-      { onConflict: 'workspace_id,module_key' },
-    );
-
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('set_workspace_module', {
+    p_key: moduleKey,
+    p_enabled: enabled,
+  });
   if (error) return { error: error.message };
   return { success: true };
 }

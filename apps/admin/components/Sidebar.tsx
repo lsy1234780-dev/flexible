@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Package, ClipboardList, Building2, FileText, ShoppingCart,
   Tags, FolderTree, Menu, X, ChevronDown, ExternalLink, ClipboardCheck, Settings, Wrench, Layers,
-  PanelLeftClose, PanelLeftOpen, LogOut, PackageCheck, Warehouse, Search, ShieldCheck, TrendingUp, Target,
+  PanelLeftClose, PanelLeftOpen, LogOut, PackageCheck, Warehouse, Search, ShieldCheck, TrendingUp, Target, MessageSquare,
 } from 'lucide-react';
 import InventoryFinderModal from '@/components/InventoryFinderModal';
 import { useMemo, useState, useTransition } from 'react';
@@ -48,6 +48,12 @@ const allNavGroups: NavGroup[] = [
       { href: '/receiving', label: '발주 관리', icon: ClipboardCheck },
       { href: '/orders', label: '수주 관리', icon: ShoppingCart },
       { href: '/quotations', label: '견적서', icon: FileText },
+    ],
+  },
+  {
+    label: '협업',
+    items: [
+      { href: '/chat', label: '채팅', icon: MessageSquare },
     ],
   },
   {

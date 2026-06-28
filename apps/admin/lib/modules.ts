@@ -22,6 +22,7 @@ export const MENU_MODULE_MAP: Record<string, string> = {
   '/as': 'service',
   '/profit-loss': 'analytics',
   '/deals': 'crm_pipeline',
+  '/chat': 'chat',
 };
 
 // 전체 모듈 키 (preview/fallback에서 "전부 켜짐"으로 취급)
@@ -57,8 +58,8 @@ export const MODULE_CATALOG: ModuleInfo[] = [
   { key: 'crm_basic', label: '거래처 이력', description: 'CRM 메모·활동 로그', tier: 'optional' },
   { key: 'analytics', label: '손익·분석', description: '손익계산서·대시보드', tier: 'optional' },
   { key: 'b2b_portal', label: 'B2B 포털', description: '협력사 셀프 포털', tier: 'optional' },
-  { key: 'crm_pipeline', label: '영업 파이프라인', description: '리드→딜 관리', tier: 'optional', comingSoon: true },
-  { key: 'chat', label: '팀 채팅', description: '채팅 + 엔티티 멘션', tier: 'optional', comingSoon: true },
+  { key: 'crm_pipeline', label: '영업 파이프라인', description: '리드→딜 관리', tier: 'optional' },
+  { key: 'chat', label: '팀 채팅', description: '채팅 + 엔티티 멘션', tier: 'optional' },
   { key: 'warranty', label: '보증 관리', description: '보증 추적', tier: 'optional', comingSoon: true },
   { key: 'ecommerce', label: '이커머스 연동', description: '온라인스토어', tier: 'optional', comingSoon: true },
   { key: 'pos', label: 'POS', description: '오프라인 판매', tier: 'optional', comingSoon: true },

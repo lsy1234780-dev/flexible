@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { Share2, Hash, User, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useModuleEnabled } from '@/components/ModulesProvider';
+import { useChatWidget } from '@/lib/chatWidgetStore';
 import { getChannels, getWorkspaceMembers, shareToChat } from '@/actions/chat';
 
 interface Props {
@@ -29,6 +30,7 @@ interface Dest {
 
 export default function ShareToChat({ entityType, entityId, label, className }: Props) {
   const chatEnabled = useModuleEnabled('chat');
+  const openWidget = useChatWidget((s) => s.openWidget);
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState('');
   const [dests, setDests] = useState<Dest[] | null>(null);
@@ -62,6 +64,8 @@ export default function ShareToChat({ entityType, entityId, label, className }: 
     setOpen(false);
     setNote('');
     setQ('');
+    // 공유한 대화를 우측 하단 미니 위젯으로 바로 띄움 (업무 중에도 확인)
+    if (res.channelId) openWidget(res.channelId);
   }
 
   const filtered = (dests ?? []).filter((d) => !q || d.name.toLowerCase().includes(q.toLowerCase()));

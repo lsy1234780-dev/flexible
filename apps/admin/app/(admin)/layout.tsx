@@ -1,5 +1,6 @@
 import Sidebar from '@/components/Sidebar';
 import { ModulesProvider } from '@/components/ModulesProvider';
+import ChatWidget from '@/components/chat/ChatWidget';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { getUserRole, getCurrentUser } from '@/actions/auth';
 import { getMyExtraMenus } from '@/actions/roleGroups';
@@ -39,9 +40,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           enabledModules={enabledModules}
           userName={currentUser?.name ?? '사용자'}
         />
-        <main className="flex-1 overflow-y-auto p-4 pt-18 md:p-6 md:pt-6">
-          <ModulesProvider modules={enabledModules}>{children}</ModulesProvider>
-        </main>
+        <ModulesProvider modules={enabledModules}>
+          <main className="flex-1 overflow-y-auto p-4 pt-18 md:p-6 md:pt-6">{children}</main>
+          <ChatWidget />
+        </ModulesProvider>
       </div>
     </TooltipProvider>
   );

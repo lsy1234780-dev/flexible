@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import dayjs from 'dayjs';
@@ -324,16 +325,32 @@ function ChannelRow({ c, active, onClick, icon }: { c: Channel; active: boolean;
 }
 
 // ─── DM 시작용 멤버 피커 (검색 + 소속 표시) ───
+// 드롭다운은 사이드바 overflow에 짤리지 않도록 portal로 body에 fixed 렌더.
 function MemberPicker({ onPick }: { onPick: (userId: string) => void }) {
   const [open, setOpen] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [q, setQ] = useState('');
+  const [coords, setCoords] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open || loaded) return;
     getWorkspaceMembers().then((m) => { setMembers(m as Member[]); setLoaded(true); });
   }, [open, loaded]);
+
+  function toggle() {
+    if (!open) {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (r) {
+        const left = Math.max(8, Math.min(r.left, window.innerWidth - 264));
+        const dropUp = r.bottom + 340 > window.innerHeight;
+        const top = dropUp ? Math.max(8, r.top - 344) : r.bottom + 4;
+        setCoords({ left, top });
+      }
+    }
+    setOpen((v) => !v);
+  }
 
   const ql = q.trim().toLowerCase();
   const filtered = ql
@@ -344,14 +361,17 @@ function MemberPicker({ onPick }: { onPick: (userId: string) => void }) {
     : members;
 
   return (
-    <div className="relative">
-      <button onClick={() => setOpen((v) => !v)} className="p-0.5 text-gray-400 hover:text-gray-700" title="새 메시지">
+    <>
+      <button ref={btnRef} onClick={toggle} className="p-0.5 text-gray-400 hover:text-gray-700" title="새 메시지">
         <Plus size={14} />
       </button>
-      {open && (
+      {open && typeof document !== 'undefined' && createPortal(
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-6 z-20 w-64 rounded-lg border bg-white py-1 shadow-lg">
+          <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
+          <div
+            className="fixed z-[61] w-64 rounded-lg border bg-white py-1 shadow-xl"
+            style={{ left: coords.left, top: coords.top }}
+          >
             <p className="px-3 pt-1 pb-1.5 text-[11px] font-semibold text-gray-400">멤버 선택</p>
             <div className="px-2 pb-1.5">
               <input
@@ -384,9 +404,10 @@ function MemberPicker({ onPick }: { onPick: (userId: string) => void }) {
               {!loaded && <p className="px-3 py-2 text-xs text-gray-400">불러오는 중…</p>}
             </div>
           </div>
-        </>
+        </>,
+        document.body,
       )}
-    </div>
+    </>
   );
 }
 

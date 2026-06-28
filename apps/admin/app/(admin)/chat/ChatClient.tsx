@@ -6,13 +6,14 @@ import { toast } from 'sonner';
 import dayjs from 'dayjs';
 import {
   Plus, Hash, Send, AtSign, X, SmilePlus, MessageSquare, CornerDownRight,
-  ChevronLeft, User,
+  ChevronLeft, User, Pencil, Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import {
   getMessages, sendMessage, getMentionCandidates, getMentionCategories, createChannel, getChannels,
-  markChannelRead, toggleReaction, getWorkspaceMembers, startDirectMessage, type MentionInput,
+  markChannelRead, toggleReaction, getWorkspaceMembers, startDirectMessage,
+  editMessage, deleteMessage, type MentionInput,
 } from '@/actions/chat';
 import { entityHref, entityChipClass, ENTITY_LABEL } from '@/lib/entityLink';
 import type { Channel } from './page';
@@ -27,6 +28,7 @@ interface Message {
   author_name: string | null;
   body: string;
   created_at: string;
+  edited_at: string | null;
   reply_to: string | null;
   message_mentions: Mention[];
   message_reactions: Reaction[];
@@ -119,6 +121,20 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
     if (activeId) loadMessages(activeId);
   }
 
+  async function handleEdit(messageId: string, body: string): Promise<boolean> {
+    const result = await editMessage(messageId, body);
+    if (result?.error) { toast.error(result.error); return false; }
+    if (activeId) loadMessages(activeId);
+    return true;
+  }
+
+  async function handleDelete(messageId: string) {
+    if (!confirm('이 메시지를 삭제할까요?')) return;
+    const result = await deleteMessage(messageId);
+    if (result?.error) { toast.error(result.error); return; }
+    if (activeId) loadMessages(activeId);
+  }
+
   async function handleCreateChannel() {
     const name = prompt('새 채널 이름 (예: 영업팀)');
     if (!name) return;
@@ -192,6 +208,8 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
               meId={meId}
               meName={meName}
               onReact={handleReact}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
               onOpenThread={() => setThreadParent(m.id)}
               onJump={jump}
               replyCount={replyCount(m.id)}
@@ -221,7 +239,7 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
             </button>
           </div>
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-            <MessageItem m={threadMsg} meId={meId} meName={meName} onReact={handleReact} onJump={jump} />
+            <MessageItem m={threadMsg} meId={meId} meName={meName} onReact={handleReact} onEdit={handleEdit} onDelete={handleDelete} onJump={jump} />
             {threadReplies.length > 0 && (
               <div className="flex items-center gap-2 text-[11px] text-gray-400">
                 <span>{threadReplies.length}개 답글</span>
@@ -230,7 +248,7 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
             )}
             {threadReplies.map((r) => (
               <div key={r.id} className="pl-3 border-l-2 border-gray-100">
-                <MessageItem m={r} meId={meId} meName={meName} onReact={handleReact} onJump={jump} />
+                <MessageItem m={r} meId={meId} meName={meName} onReact={handleReact} onEdit={handleEdit} onDelete={handleDelete} onJump={jump} />
               </div>
             ))}
           </div>
@@ -315,13 +333,23 @@ interface MessageItemProps {
   meName: string;
   onReact: (messageId: string, emoji: string) => void;
   onJump: (entityType: string, entityId: string) => void;
+  onEdit?: (messageId: string, body: string) => Promise<boolean>;
+  onDelete?: (messageId: string) => void;
   onOpenThread?: () => void;
   replyCount?: number;
 }
 
-function MessageItem({ m, meId, meName, onReact, onJump, onOpenThread, replyCount = 0 }: MessageItemProps) {
+function MessageItem({ m, meId, meName, onReact, onJump, onEdit, onDelete, onOpenThread, replyCount = 0 }: MessageItemProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(m.body);
   const mine = m.author_id === meId;
+
+  async function saveEdit() {
+    if (!onEdit) return;
+    const ok = await onEdit(m.id, draft);
+    if (ok) setEditing(false);
+  }
 
   const agg = new Map<string, { count: number; mine: boolean }>();
   for (const r of m.message_reactions ?? []) {
@@ -336,6 +364,7 @@ function MessageItem({ m, meId, meName, onReact, onJump, onOpenThread, replyCoun
       <div className="flex items-baseline gap-2">
         <span className="text-sm font-semibold text-gray-900">{mine ? meName : (m.author_name ?? '사용자')}</span>
         <span className="text-[11px] text-gray-400">{dayjs(m.created_at).format('MM.DD HH:mm')}</span>
+        {m.edited_at && <span className="text-[10px] text-gray-300">(수정됨)</span>}
         <span className="ml-auto hidden group-hover:flex items-center gap-1">
           <button onClick={() => setPickerOpen((v) => !v)} className="p-1 text-gray-400 hover:text-gray-700" title="반응 추가">
             <SmilePlus size={14} />
@@ -345,10 +374,41 @@ function MessageItem({ m, meId, meName, onReact, onJump, onOpenThread, replyCoun
               <CornerDownRight size={14} />
             </button>
           )}
+          {mine && onEdit && (
+            <button onClick={() => { setDraft(m.body); setEditing(true); }} className="p-1 text-gray-400 hover:text-gray-700" title="수정">
+              <Pencil size={13} />
+            </button>
+          )}
+          {mine && onDelete && (
+            <button onClick={() => onDelete(m.id)} className="p-1 text-gray-400 hover:text-red-600" title="삭제">
+              <Trash2 size={13} />
+            </button>
+          )}
         </span>
       </div>
 
-      {m.body && <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">{m.body}</p>}
+      {editing ? (
+        <div className="mt-1">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(); }
+              if (e.key === 'Escape') setEditing(false);
+            }}
+            rows={2}
+            autoFocus
+            className="w-full resize-none rounded-md border px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-gray-400"
+          />
+          <div className="mt-1 flex items-center gap-2 text-xs">
+            <button onClick={saveEdit} className="rounded bg-gray-900 px-2 py-1 text-white hover:bg-gray-800">저장</button>
+            <button onClick={() => setEditing(false)} className="text-gray-500 hover:text-gray-700">취소</button>
+            <span className="text-gray-400">Enter 저장 · Esc 취소</span>
+          </div>
+        </div>
+      ) : (
+        m.body && <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">{m.body}</p>
+      )}
 
       {m.message_mentions?.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1">

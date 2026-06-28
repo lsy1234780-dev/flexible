@@ -145,7 +145,7 @@ export async function getMessages(channelId: string, limit = 100) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('messages')
-    .select('id, author_id, author_name, body, created_at, reply_to, message_mentions(entity_type, entity_id, label), message_reactions(emoji, user_id)')
+    .select('id, author_id, author_name, body, created_at, edited_at, reply_to, message_mentions(entity_type, entity_id, label), message_reactions(emoji, user_id)')
     .eq('channel_id', channelId)
     .is('deleted_at', null)
     .order('created_at', { ascending: true })
@@ -194,6 +194,42 @@ export async function sendMessage(
     if (mErr) return { error: mErr.message };
   }
   return { success: true, id: msg.id };
+}
+
+// ─── 메시지 수정 / 삭제 (작성자 본인만) ───
+
+export async function editMessage(messageId: string, body: string) {
+  const text = body.trim();
+  if (!text) return { error: '내용을 입력하세요' };
+  const supabase = await createClient();
+  const me = await getCurrentUser();
+  if (!me?.id) return { error: '로그인이 필요합니다' };
+
+  const { data, error } = await supabase
+    .from('messages')
+    .update({ body: text, edited_at: new Date().toISOString() })
+    .eq('id', messageId)
+    .eq('author_id', me.id) // 본인 메시지만
+    .select('id');
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: '수정 권한이 없습니다' };
+  return { success: true };
+}
+
+export async function deleteMessage(messageId: string) {
+  const supabase = await createClient();
+  const me = await getCurrentUser();
+  if (!me?.id) return { error: '로그인이 필요합니다' };
+
+  const { data, error } = await supabase
+    .from('messages')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', messageId)
+    .eq('author_id', me.id)
+    .select('id');
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: '삭제 권한이 없습니다' };
+  return { success: true };
 }
 
 // ─── 이모지 반응 (토글) ───

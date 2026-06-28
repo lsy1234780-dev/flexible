@@ -103,6 +103,11 @@ export default function ChatClient({ channels: initialChannels, meId, meName }: 
     loadMessages(activeId);
   }
 
+  function jump(entityType: string, entityId: string) {
+    const href = entityHref(entityType, entityId);
+    if (href && href !== '#') router.push(href);
+  }
+
   async function handleReact(messageId: string, emoji: string) {
     const result = await toggleReaction(messageId, emoji);
     if (result?.error) { toast.error(result.error); return; }
@@ -183,7 +188,7 @@ export default function ChatClient({ channels: initialChannels, meId, meName }: 
               meName={meName}
               onReact={handleReact}
               onOpenThread={() => setThreadParent(m.id)}
-              onJump={(t, id) => router.push(entityHref(t, id))}
+              onJump={jump}
               replyCount={replyCount(m.id)}
             />
           ))}
@@ -211,7 +216,7 @@ export default function ChatClient({ channels: initialChannels, meId, meName }: 
             </button>
           </div>
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-            <MessageItem m={threadMsg} meId={meId} meName={meName} onReact={handleReact} onJump={(t, id) => router.push(entityHref(t, id))} />
+            <MessageItem m={threadMsg} meId={meId} meName={meName} onReact={handleReact} onJump={jump} />
             {threadReplies.length > 0 && (
               <div className="flex items-center gap-2 text-[11px] text-gray-400">
                 <span>{threadReplies.length}개 답글</span>
@@ -220,7 +225,7 @@ export default function ChatClient({ channels: initialChannels, meId, meName }: 
             )}
             {threadReplies.map((r) => (
               <div key={r.id} className="pl-3 border-l-2 border-gray-100">
-                <MessageItem m={r} meId={meId} meName={meName} onReact={handleReact} onJump={(t, id) => router.push(entityHref(t, id))} />
+                <MessageItem m={r} meId={meId} meName={meName} onReact={handleReact} onJump={jump} />
               </div>
             ))}
           </div>

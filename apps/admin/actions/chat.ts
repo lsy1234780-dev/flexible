@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { getCurrentUser } from '@/actions/auth';
 import { getEnabledModules } from '@/actions/modules';
+import { entitiesForModules, getEntityDef } from '@/lib/moduleRegistry';
 
 export interface MentionInput {
   entity_type: string;
@@ -154,114 +155,46 @@ export async function toggleReaction(messageId: string, emoji: string) {
 
 // ─── 엔티티 멘션 (모듈별 카테고리 → 타입별 리스트) — 비전 핵심 ───
 
-// 모듈 ↔ 엔티티 카테고리 매핑. 켜진 모듈의 카테고리만 멘션 메뉴에 노출된다.
-// module: null = 항상 노출(사람 등 모듈 무관). 비전: "워크스페이스의 모든 것을 멘션".
-const MENTION_CATEGORIES: { module: string | null; type: string; label: string }[] = [
-  { module: null, type: 'user', label: '멤버' },
-  { module: 'partners', type: 'company', label: '거래처' },
-  { module: 'crm_pipeline', type: 'deal', label: '딜' },
-  { module: 'orders', type: 'order', label: '수주' },
-  { module: 'quotations', type: 'quotation', label: '견적' },
-  { module: 'products', type: 'product', label: '제품' },
-  { module: 'products', type: 'category', label: '카테고리' },
-  { module: 'inventory', type: 'warehouse', label: '창고' },
-  { module: 'receiving', type: 'receiving', label: '입고' },
-  { module: 'service', type: 'as', label: 'A/S' },
-];
-
-// @ 클릭 시 뜨는 카테고리 메뉴 (사람 + 워크스페이스에서 켜진 모듈)
+// @ 클릭 시 뜨는 카테고리 메뉴 = 켜진 모듈이 제공하는 엔티티(레지스트리에서 파생).
+// 채팅은 어떤 모듈이 뭘 제공하는지 모른다 — 레지스트리만 읽는다(모듈화 OS 계약).
 export async function getMentionCategories(): Promise<{ type: string; label: string }[]> {
   if (process.env.PREVIEW_MODE === 'true') return [];
   const enabled = await getEnabledModules();
-  return MENTION_CATEGORIES
-    .filter((c) => c.module === null || enabled.includes(c.module))
-    .map(({ type, label }) => ({ type, label }));
+  return entitiesForModules(enabled).map((e) => ({ type: e.type, label: e.label }));
 }
 
-// 특정 카테고리(type) 안에서 검색. query 비면 최근 항목.
+// 특정 엔티티(type) 안에서 검색. query 비면 최근 항목. 레지스트리 정의로 제너릭 처리.
 export async function getMentionCandidates(query: string, type: string): Promise<MentionInput[]> {
   if (process.env.PREVIEW_MODE === 'true') return [];
-  const supabase = await createClient();
+  const def = getEntityDef(type);
+  if (!def) return [];
+  const source = def.source;
   const q = query.trim();
   const N = 8;
 
-  switch (type) {
-    case 'user': {
-      const members = await getWorkspaceMembers();
-      const ql = q.toLowerCase();
-      return members
-        .filter((m) => !ql || m.name.toLowerCase().includes(ql) || m.email.toLowerCase().includes(ql))
-        .slice(0, N)
-        .map((m) => ({ entity_type: 'user', entity_id: m.user_id, label: m.name }));
-    }
-    case 'company': {
-      const base = supabase.from('companies').select('id, name');
-      const { data } = await (q
-        ? base.ilike('name', `%${q}%`).limit(N)
-        : base.order('created_at', { ascending: false }).limit(N));
-      return (data ?? []).map((c) => ({ entity_type: 'company', entity_id: c.id, label: c.name }));
-    }
-    case 'deal': {
-      const base = supabase.from('deals').select('id, title');
-      const { data } = await (q
-        ? base.ilike('title', `%${q}%`).limit(N)
-        : base.order('updated_at', { ascending: false }).limit(N));
-      return (data ?? []).map((d) => ({ entity_type: 'deal', entity_id: d.id, label: d.title }));
-    }
-    case 'order': {
-      const base = supabase.from('orders').select('id, order_number');
-      const { data } = await (q
-        ? base.ilike('order_number', `%${q}%`).limit(N)
-        : base.order('created_at', { ascending: false }).limit(N));
-      return (data ?? []).map((o) => ({ entity_type: 'order', entity_id: o.id, label: o.order_number ?? o.id.slice(0, 8) }));
-    }
-    case 'quotation': {
-      const base = supabase.from('quotations').select('id, number');
-      const { data } = await (q
-        ? base.ilike('number', `%${q}%`).limit(N)
-        : base.order('issued_at', { ascending: false }).limit(N));
-      return (data ?? []).map((x) => ({ entity_type: 'quotation', entity_id: x.id, label: x.number ?? x.id.slice(0, 8) }));
-    }
-    case 'product': {
-      const base = supabase.from('products').select('id, name');
-      const { data } = await (q
-        ? base.ilike('name', `%${q}%`).limit(N)
-        : base.order('created_at', { ascending: false }).limit(N));
-      return (data ?? []).map((p) => ({ entity_type: 'product', entity_id: p.id, label: p.name }));
-    }
-    case 'category': {
-      const base = supabase.from('categories').select('id, name');
-      const { data } = await (q
-        ? base.ilike('name', `%${q}%`).limit(N)
-        : base.order('sort_order', { ascending: true }).limit(N));
-      return (data ?? []).map((c) => ({ entity_type: 'category', entity_id: c.id, label: c.name }));
-    }
-    case 'warehouse': {
-      const base = supabase.from('warehouses').select('id, name');
-      const { data } = await (q
-        ? base.ilike('name', `%${q}%`).limit(N)
-        : base.order('created_at', { ascending: false }).limit(N));
-      return (data ?? []).map((w) => ({ entity_type: 'warehouse', entity_id: w.id, label: w.name }));
-    }
-    case 'receiving': {
-      const base = supabase.from('receiving_orders').select('id, title');
-      const { data } = await (q
-        ? base.ilike('title', `%${q}%`).limit(N)
-        : base.order('created_at', { ascending: false }).limit(N));
-      return (data ?? []).map((r) => ({ entity_type: 'receiving', entity_id: r.id, label: r.title ?? r.id.slice(0, 8) }));
-    }
-    case 'as': {
-      const base = supabase.from('as_requests').select('id, number, customer_name');
-      const { data } = await (q
-        ? base.or(`number.ilike.%${q}%,customer_name.ilike.%${q}%`).limit(N)
-        : base.order('created_at', { ascending: false }).limit(N));
-      return (data ?? []).map((a) => ({
-        entity_type: 'as',
-        entity_id: a.id,
-        label: a.number ? `${a.number}${a.customer_name ? ' · ' + a.customer_name : ''}` : (a.customer_name ?? a.id.slice(0, 8)),
-      }));
-    }
-    default:
-      return [];
+  // 멤버(사람) — 테이블이 아니라 전용 RPC 경로 (MembersSource만 kind를 가짐)
+  if ('kind' in source) {
+    const members = await getWorkspaceMembers();
+    const ql = q.toLowerCase();
+    return members
+      .filter((m) => !ql || m.name.toLowerCase().includes(ql) || m.email.toLowerCase().includes(ql))
+      .slice(0, N)
+      .map((m) => ({ entity_type: def.type, entity_id: m.user_id, label: m.name }));
   }
+
+  // 테이블 기반 — labelColumns / searchColumns / orderColumn 으로 제너릭 쿼리
+  const src = source;
+  const supabase = await createClient();
+  const cols = Array.from(new Set(['id', ...src.labelColumns, ...src.searchColumns])).join(', ');
+  // .from(string)은 제너릭 타입을 좁히지 못하므로 동적 테이블은 캐스팅(런타임 RLS가 보장)
+  const base = supabase.from(src.table as never).select(cols);
+  const { data } = await (q
+    ? base.or(src.searchColumns.map((c) => `${c}.ilike.%${q}%`).join(',')).limit(N)
+    : base.order(src.orderColumn, { ascending: src.orderAsc ?? false }).limit(N));
+
+  return ((data ?? []) as unknown as Record<string, unknown>[]).map((row) => {
+    const id = String(row.id);
+    const label = src.labelColumns.map((c) => row[c]).filter(Boolean).map(String).join(' · ');
+    return { entity_type: def.type, entity_id: id, label: label || id.slice(0, 8) };
+  });
 }

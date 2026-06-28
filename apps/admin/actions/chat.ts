@@ -165,7 +165,7 @@ export async function getMessages(channelId: string, limit = 100) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('messages')
-    .select('id, author_id, author_name, body, created_at, edited_at, reply_to, message_mentions(entity_type, entity_id, label), message_reactions(emoji, user_id)')
+    .select('id, author_id, author_name, body, created_at, edited_at, reply_to, message_mentions(entity_type, entity_id, label), message_reactions(emoji, user_id), message_attachments(id, storage_path, file_name, mime_type, size_bytes)')
     .eq('channel_id', channelId)
     .is('deleted_at', null)
     .order('created_at', { ascending: true })
@@ -174,14 +174,22 @@ export async function getMessages(channelId: string, limit = 100) {
   return data;
 }
 
+export interface AttachmentInput {
+  storage_path: string;
+  file_name: string;
+  mime_type: string | null;
+  size_bytes: number | null;
+}
+
 export async function sendMessage(
   channelId: string,
   body: string,
   mentions: MentionInput[] = [],
   replyTo: string | null = null,
+  attachments: AttachmentInput[] = [],
 ) {
   const text = body.trim();
-  if (!text && mentions.length === 0) return { error: '메시지를 입력하세요' };
+  if (!text && mentions.length === 0 && attachments.length === 0) return { error: '메시지를 입력하세요' };
 
   const supabase = await createClient();
   const workspaceId = await getCurrentWorkspaceId();
@@ -213,7 +221,47 @@ export async function sendMessage(
     );
     if (mErr) return { error: mErr.message };
   }
+
+  if (attachments.length > 0) {
+    const { error: aErr } = await supabase.from('message_attachments').insert(
+      attachments.map((a) => ({
+        workspace_id: workspaceId,
+        message_id: msg.id,
+        storage_path: a.storage_path,
+        file_name: a.file_name,
+        mime_type: a.mime_type,
+        size_bytes: a.size_bytes,
+      })),
+    );
+    if (aErr) return { error: aErr.message };
+  }
   return { success: true, id: msg.id };
+}
+
+// 파일 업로드 (서버에서 Storage로) → 첨부 메타데이터 반환
+export async function uploadChatFile(formData: FormData) {
+  const file = formData.get('file') as File | null;
+  const channelId = formData.get('channelId') as string | null;
+  if (!file || !channelId) return { error: '파일이 없습니다' };
+  if (file.size > 25 * 1024 * 1024) return { error: '파일은 25MB 이하만 가능합니다' };
+
+  const supabase = await createClient();
+  const workspaceId = await getCurrentWorkspaceId();
+  const safeName = file.name.replace(/[^\w.\-]/g, '_');
+  const path = `${workspaceId}/${channelId}/${crypto.randomUUID()}-${safeName}`;
+
+  const { error } = await supabase.storage
+    .from('chat-attachments')
+    .upload(path, file, { contentType: file.type || undefined, upsert: false });
+  if (error) return { error: error.message };
+
+  const attachment: AttachmentInput = {
+    storage_path: path,
+    file_name: file.name,
+    mime_type: file.type || null,
+    size_bytes: file.size,
+  };
+  return { success: true, attachment };
 }
 
 // ─── 메시지 수정 / 삭제 (작성자 본인만) ───

@@ -6,14 +6,15 @@ import { toast } from 'sonner';
 import dayjs from 'dayjs';
 import {
   Plus, Hash, Send, AtSign, X, SmilePlus, MessageSquare, CornerDownRight,
-  ChevronLeft, User, Pencil, Trash2, Bell, AtSign as AtSignIcon,
+  ChevronLeft, User, Pencil, Trash2, Bell, AtSign as AtSignIcon, Paperclip, FileText, Download,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import {
   getMessages, sendMessage, getMentionCandidates, getMentionCategories, createChannel, getChannels,
   markChannelRead, toggleReaction, getWorkspaceMembers, startDirectMessage,
-  editMessage, deleteMessage, getMyMentions, type MentionInput, type MyMention,
+  editMessage, deleteMessage, getMyMentions, uploadChatFile,
+  type MentionInput, type MyMention, type AttachmentInput,
 } from '@/actions/chat';
 import { entityHref, entityChipClass, ENTITY_LABEL } from '@/lib/entityLink';
 import type { Channel } from './page';
@@ -22,6 +23,7 @@ const EMOJIS = ['👍', '❤️', '😂', '🎉', '👀', '🙏'];
 
 interface Mention { entity_type: string; entity_id: string; label: string }
 interface Reaction { emoji: string; user_id: string | null }
+interface Attachment { id: string; storage_path: string; file_name: string; mime_type: string | null; size_bytes: number | null }
 interface Message {
   id: string;
   author_id: string | null;
@@ -32,6 +34,7 @@ interface Message {
   reply_to: string | null;
   message_mentions: Mention[];
   message_reactions: Reaction[];
+  message_attachments: Attachment[];
 }
 interface Member { user_id: string; name: string; email: string }
 
@@ -114,9 +117,9 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  async function handleSend(body: string, mentions: Mention[], replyTo: string | null = null) {
+  async function handleSend(body: string, mentions: Mention[], attachments: AttachmentInput[], replyTo: string | null = null) {
     if (!activeId) return;
-    const result = await sendMessage(activeId, body, mentions, replyTo);
+    const result = await sendMessage(activeId, body, mentions, replyTo, attachments);
     if (result?.error) { toast.error(result.error); return; }
     loadMessages(activeId);
   }
@@ -279,8 +282,9 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
 
         {activeId && (
           <Composer
+            channelId={activeId}
             placeholder={active?.kind === 'dm' ? `${channelLabel(active)} 에게 메시지…` : `#${active ? channelLabel(active) : ''} 에 메시지…`}
-            onSend={(body, mentions) => handleSend(body, mentions, null)}
+            onSend={(body, mentions, attachments) => handleSend(body, mentions, attachments, null)}
           />
         )}
       </section>
@@ -308,7 +312,7 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
               </div>
             ))}
           </div>
-          <Composer placeholder="답글 남기기…" onSend={(body, mentions) => handleSend(body, mentions, threadMsg.id)} />
+          <Composer channelId={activeId!} placeholder="답글 남기기…" onSend={(body, mentions, attachments) => handleSend(body, mentions, attachments, threadMsg.id)} />
         </aside>
       )}
     </div>
@@ -379,6 +383,50 @@ function MemberPicker({ onPick }: { onPick: (userId: string) => void }) {
         </>
       )}
     </div>
+  );
+}
+
+// ─── 첨부 파일 뷰 (서명 URL로 이미지 인라인 / 파일 다운로드) ───
+function formatSize(n: number): string {
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)}KB`;
+  return `${(n / 1024 / 1024).toFixed(1)}MB`;
+}
+
+function AttachmentView({ att }: { att: Attachment }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const supabase = createClient();
+    supabase.storage.from('chat-attachments').createSignedUrl(att.storage_path, 3600)
+      .then(({ data }) => { if (alive) setUrl(data?.signedUrl ?? null); });
+    return () => { alive = false; };
+  }, [att.storage_path]);
+
+  const isImage = (att.mime_type ?? '').startsWith('image/');
+  if (isImage) {
+    return url
+      ? (
+        <a href={url} target="_blank" rel="noreferrer" className="block">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={url} alt={att.file_name} className="max-h-60 max-w-xs rounded-md border object-cover" />
+        </a>
+      )
+      : <div className="h-32 w-48 animate-pulse rounded-md bg-gray-100" />;
+  }
+  return (
+    <a
+      href={url ?? '#'}
+      target="_blank"
+      rel="noreferrer"
+      download={att.file_name}
+      className="inline-flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+    >
+      <FileText size={15} className="text-gray-400" />
+      <span className="max-w-48 truncate">{att.file_name}</span>
+      {att.size_bytes != null && <span className="text-xs text-gray-400">{formatSize(att.size_bytes)}</span>}
+      <Download size={13} className="text-gray-400" />
+    </a>
   );
 }
 
@@ -466,6 +514,12 @@ function MessageItem({ m, meId, meName, onReact, onJump, onEdit, onDelete, onOpe
         m.body && <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">{m.body}</p>
       )}
 
+      {m.message_attachments?.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-2">
+          {m.message_attachments.map((a) => <AttachmentView key={a.id} att={a} />)}
+        </div>
+      )}
+
       {m.message_mentions?.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1">
           {m.message_mentions.map((mn, i) => (
@@ -521,14 +575,33 @@ function MessageItem({ m, meId, meName, onReact, onJump, onEdit, onDelete, onOpe
 
 // ─── 작성 컴포넌트 (채널/스레드 공용) — 엔티티 멘션 2단 메뉴 ───
 interface ComposerProps {
+  channelId: string;
   placeholder: string;
-  onSend: (body: string, mentions: Mention[]) => Promise<void> | void;
+  onSend: (body: string, mentions: Mention[], attachments: AttachmentInput[]) => Promise<void> | void;
 }
 
-function Composer({ placeholder, onSend }: ComposerProps) {
+function Composer({ channelId, placeholder, onSend }: ComposerProps) {
   const [body, setBody] = useState('');
   const [pending, setPending] = useState<Mention[]>([]);
+  const [files, setFiles] = useState<AttachmentInput[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [sending, setSending] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function handleFiles(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    setUploading(true);
+    for (const file of Array.from(list)) {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('channelId', channelId);
+      const res = await uploadChatFile(fd);
+      if (res?.error) { toast.error(res.error); continue; }
+      if (res.attachment) setFiles((prev) => [...prev, res.attachment]);
+    }
+    setUploading(false);
+    if (fileRef.current) fileRef.current.value = '';
+  }
 
   // 멘션 메뉴: open → (카테고리 선택) → 항목 리스트
   const [menuOpen, setMenuOpen] = useState(false);
@@ -577,12 +650,13 @@ function Composer({ placeholder, onSend }: ComposerProps) {
   }
 
   async function submit() {
-    if (!body.trim() && pending.length === 0) return;
+    if (!body.trim() && pending.length === 0 && files.length === 0) return;
     setSending(true);
-    await onSend(body, pending);
+    await onSend(body, pending, files);
     setSending(false);
     setBody('');
     setPending([]);
+    setFiles([]);
   }
 
   return (
@@ -598,6 +672,22 @@ function Composer({ placeholder, onSend }: ComposerProps) {
               </button>
             </span>
           ))}
+        </div>
+      )}
+
+      {/* 첨부 파일 칩 */}
+      {(files.length > 0 || uploading) && (
+        <div className="mb-2 flex flex-wrap gap-1">
+          {files.map((f, i) => (
+            <span key={i} className="inline-flex items-center gap-1 rounded border bg-gray-50 px-1.5 py-0.5 text-xs text-gray-700">
+              <Paperclip size={11} className="opacity-60" />
+              <span className="max-w-40 truncate">{f.file_name}</span>
+              <button onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} className="hover:opacity-70">
+                <X size={11} />
+              </button>
+            </span>
+          ))}
+          {uploading && <span className="text-xs text-gray-400">업로드 중…</span>}
         </div>
       )}
 
@@ -657,6 +747,15 @@ function Composer({ placeholder, onSend }: ComposerProps) {
       )}
 
       <div className="flex items-end gap-2">
+        <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border text-gray-500 hover:bg-gray-100 disabled:opacity-50"
+          title="파일 첨부"
+        >
+          <Paperclip size={16} />
+        </button>
         <button
           onClick={openMenu}
           className={cn('flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border transition-colors', menuOpen ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100')}

@@ -12,17 +12,28 @@ let registered = false;
 export function registerFonts(): void {
   if (registered) return;
 
-  // PDF_FONTS_DIR 환경변수 우선 (Next.js 번들 환경에서는 __dirname 이 틀어짐)
-  const fontsDir = process.env.PDF_FONTS_DIR ?? path.join(process.cwd(), 'lib/pdf/fonts');
-  const regularPath = path.join(fontsDir, 'NotoSansKR-Regular.ttf');
-  const boldPath = path.join(fontsDir, 'NotoSansKR-Bold.ttf');
+  // 폰트 디렉토리를 cwd에 의존하지 않고 여러 후보에서 탐색.
+  // (dev/build를 apps/admin 또는 모노레포 루트 어디서 실행하든 동작)
+  const FONT_FILE = 'NotoSansKR-Regular.ttf';
+  const candidates = [
+    process.env.PDF_FONTS_DIR,
+    path.join(process.cwd(), 'lib/pdf/fonts'),            // cwd = apps/admin
+    path.join(process.cwd(), 'apps/admin/lib/pdf/fonts'), // cwd = 모노레포 루트
+    typeof __dirname !== 'undefined' ? __dirname : undefined, // 번들이 안 풀린 경우
+  ].filter((d): d is string => Boolean(d));
 
-  if (!fs.existsSync(regularPath)) {
+  const fontsDir = candidates.find((d) => fs.existsSync(path.join(d, FONT_FILE)));
+
+  if (!fontsDir) {
     throw new Error(
-      `[pdf-lib] 폰트 파일을 찾을 수 없습니다: ${regularPath}\n` +
-        '먼저 `npm run setup` 을 실행하여 폰트를 다운로드하세요.'
+      `[pdf-lib] 폰트 파일을 찾을 수 없습니다: ${FONT_FILE}\n` +
+        `탐색한 경로: ${candidates.join(', ')}\n` +
+        'PDF_FONTS_DIR 환경변수로 폰트 디렉토리를 지정하거나 폰트를 배치하세요.'
     );
   }
+
+  const regularPath = path.join(fontsDir, 'NotoSansKR-Regular.ttf');
+  const boldPath = path.join(fontsDir, 'NotoSansKR-Bold.ttf');
 
   Font.register({
     family: 'NotoSansKR',

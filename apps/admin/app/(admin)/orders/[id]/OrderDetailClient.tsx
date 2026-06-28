@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import ShareToChat from '@/components/ShareToChat';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -927,6 +928,11 @@ export default function OrderDetailClient({ order }: Props) {
 
         {/* 상태별 액션 버튼 */}
         <div className="flex items-center gap-2 pl-10 sm:pl-0">
+          <ShareToChat
+            entityType="order"
+            entityId={order.id}
+            label={order.order_number ?? `${order.companies?.name ?? ''} 발주`}
+          />
           {order.status === 'pending' && (
             <>
               <Button size="sm" onClick={handleConfirm} disabled={isPending}>

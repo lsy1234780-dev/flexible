@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { upsertCompanyProduct, updateCompanyStatus, updateCompany } from '@/actions/companies';
 import { addCrmMemo } from '@/actions/orders';
 import CountrySelect from '@/components/CountrySelect';
+import ShareToChat from '@/components/ShareToChat';
 import type { Company, CrmLog } from '@/types/database';
 import dayjs from 'dayjs';
 
@@ -445,7 +446,8 @@ export default function CompanyDetailClient({ company, companyProducts, crmLogs,
             </p>
           </div>
         </div>
-        <div className="pl-10 sm:pl-0 sm:ml-auto shrink-0">
+        <div className="flex items-center gap-2 pl-10 sm:pl-0 sm:ml-auto shrink-0">
+          <ShareToChat entityType="company" entityId={company.id} label={company.name} />
           <Select
             value={company.status}
             onValueChange={(v) => handleStatusChange(v as Company['status'])}

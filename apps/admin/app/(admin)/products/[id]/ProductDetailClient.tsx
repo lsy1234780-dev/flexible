@@ -4,6 +4,7 @@ import { useState, useMemo, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { ArrowLeft, Barcode, Pencil, Package, Trash2, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import ShareToChat from '@/components/ShareToChat';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -130,7 +131,8 @@ export default function ProductDetailClient({ product, categories }: Props) {
             </Badge>
           </div>
         </div>
-        <div className="flex gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
+          <ShareToChat entityType="product" entityId={product.id} label={product.name} />
           <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setBarcodeOpen(true)}>
             <Barcode size={15} />
           </Button>

@@ -10,6 +10,7 @@ import {
   ShieldCheck, ShieldOff,
 } from 'lucide-react';
 import { updateAsStatus, updateAsRequest, deleteAsRequest, getWarrantyBySerial } from '@/actions/asRequests';
+import ShareToChat from '@/components/ShareToChat';
 import type { AsStatus } from '@/lib/asConstants';
 import dayjs from 'dayjs';
 
@@ -203,14 +204,17 @@ export default function AsDetailClient({ request }: Props) {
             <h1 className="text-lg font-bold text-gray-900 mt-0.5 truncate">{request.product_name}</h1>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleDelete}
-          disabled={isPending}
-          className="text-xs text-red-400 hover:text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors pl-10 sm:pl-3 sm:ml-auto shrink-0"
-        >
-          삭제
-        </button>
+        <div className="flex items-center gap-2 pl-10 sm:pl-0 sm:ml-auto shrink-0">
+          <ShareToChat entityType="as" entityId={request.id} label={request.number ?? request.product_name ?? 'A/S'} />
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={isPending}
+            className="text-xs text-red-400 hover:text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
+          >
+            삭제
+          </button>
+        </div>
       </div>
 
       {/* 워크플로우 진행 표시 */}

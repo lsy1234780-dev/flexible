@@ -13,6 +13,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { processBarcodeScan, directShipProduct } from '@/actions/inventory';
+import ShareToChat from '@/components/ShareToChat';
 import dayjs from 'dayjs';
 
 interface Product {
@@ -237,7 +238,8 @@ export default function InventoryClient({ products, logs, companies }: Props) {
       cell: ({ row }) => {
         const available = getAvailable(row.original);
         return (
-          <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+          <div className="flex justify-end items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+            <ShareToChat entityType="product" entityId={row.original.id} label={`${row.original.name} (재고)`} />
             <Button
               variant="outline"
               size="sm"

@@ -58,6 +58,8 @@ export async function autoAssignSerials(
   quantity: number,
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   // LOT received_at 기준 FIFO
   const { data: serials, error } = await supabase
@@ -115,6 +117,8 @@ export async function assignSerials(
   items: AssignItem[],
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   if (items.length === 0) return { error: '배정할 시리얼이 없습니다' };
 
@@ -172,6 +176,8 @@ export async function assignSerialsByText(
   serialTexts: string[],
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   if (serialTexts.length === 0) return { error: '입력된 시리얼이 없습니다' };
 
@@ -255,6 +261,8 @@ export async function matchSerialsAcrossProducts(
   serialTexts: string[],
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   if (serialTexts.length === 0) return { error: '입력된 시리얼이 없습니다' };
 
@@ -337,6 +345,8 @@ export async function assignQuantityOnly(
   quantity: number,
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const { error } = await supabase
     .from('shipment_serials')
@@ -360,6 +370,8 @@ export async function unassignSerial(
   shipmentSerialId: string,
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const { data: ss } = await supabase
     .from('shipment_serials')
@@ -423,6 +435,8 @@ export async function getShipmentSerialCount(shipmentId: string) {
 // 출고건의 모든 시리얼 배정 초기화
 export async function clearAllShipmentSerials(shipmentId: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   // 배정된 시리얼 ID 조회
   const { data: assigned, error: fetchErr } = await supabase
@@ -462,6 +476,8 @@ export async function updateSerialLevel(
   level: SerialLevel,
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   // 기존 배정이 있으면 먼저 초기화
   const { count } = await supabase

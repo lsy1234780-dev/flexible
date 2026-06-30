@@ -35,6 +35,8 @@ export async function createReceivingOrder(
   memo?: string,
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   if (!title.trim()) return { error: '제목을 입력하세요' };
   if (items.length === 0) return { error: '입고 항목을 추가하세요' };
@@ -79,6 +81,8 @@ export async function createReceivingOrder(
 
 export async function deleteReceivingOrder(id: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const { data: order } = await supabase
     .from('receiving_orders')
@@ -160,6 +164,8 @@ export async function confirmReceivingOrder(
   options?: ConfirmOptions,
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
   const workspaceId = await getCurrentWorkspaceId();
   const generateBarcode = options?.generateUnitBarcode ?? false;
   const warehouseId = options?.warehouse_id ?? null;
@@ -480,6 +486,8 @@ export async function matchStagingToReceivingItem(
   receivingItemId: string,
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const { data: staging } = await supabase
     .from('receiving_staging')
@@ -529,6 +537,8 @@ export async function matchStagingToReceivingItem(
 
 export async function autoMatchStaging() {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const { data: unmatched } = await supabase
     .from('receiving_staging')
@@ -590,6 +600,8 @@ export async function receiveItems(
   items: { receivingItemId: string; quantity: number }[],
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const { data: order } = await supabase
     .from('receiving_orders')

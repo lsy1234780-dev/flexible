@@ -61,7 +61,10 @@ export async function updatePassword(formData: FormData) {
   const password = formData.get('password') as string;
   const confirmPassword = formData.get('confirmPassword') as string;
 
-  if (!password || password.length < 6) return { error: '비밀번호는 6자 이상이어야 합니다.' };
+  if (!password || password.length < 8) return { error: '비밀번호는 8자 이상이어야 합니다.' };
+  if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+    return { error: '비밀번호는 영문자와 숫자를 모두 포함해야 합니다.' };
+  }
   if (password !== confirmPassword) return { error: '비밀번호가 일치하지 않습니다.' };
 
   const supabase = await createClient();

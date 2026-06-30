@@ -62,6 +62,8 @@ export async function createLot(input: {
   memo?: string;
 }) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   if (!input.product_id) return { error: '제품을 선택하세요' };
   if (!input.manufactured_at) return { error: '제조일을 입력하세요' };
@@ -101,6 +103,8 @@ export async function updateLot(
   },
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const updates: Record<string, unknown> = {};
 
@@ -133,6 +137,8 @@ export async function updateLot(
 
 export async function deleteLot(lotId: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   // 해당 LOT에 연결된 시리얼이 있는지 확인
   const { count } = await supabase

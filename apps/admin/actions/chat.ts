@@ -199,6 +199,9 @@ export async function sendMessage(
   if (!text && mentions.length === 0 && attachments.length === 0) return { error: '메시지를 입력하세요' };
 
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
+
   const workspaceId = await getCurrentWorkspaceId();
   const me = await getCurrentUser();
 
@@ -246,13 +249,42 @@ export async function sendMessage(
 }
 
 // 파일 업로드 (서버에서 Storage로) → 첨부 메타데이터 반환
+const ALLOWED_MIME_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain', 'text/csv',
+  'application/zip',
+]);
+
+const ALLOWED_EXTENSIONS = new Set([
+  'jpg', 'jpeg', 'png', 'gif', 'webp',
+  'pdf', 'doc', 'docx', 'xls', 'xlsx',
+  'txt', 'csv', 'zip',
+]);
+
 export async function uploadChatFile(formData: FormData) {
   const file = formData.get('file') as File | null;
   const channelId = formData.get('channelId') as string | null;
   if (!file || !channelId) return { error: '파일이 없습니다' };
   if (file.size > 25 * 1024 * 1024) return { error: '파일은 25MB 이하만 가능합니다' };
 
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  if (!ALLOWED_EXTENSIONS.has(ext)) {
+    return { error: `허용되지 않는 파일 형식입니다 (.${ext})` };
+  }
+  if (file.type && !ALLOWED_MIME_TYPES.has(file.type)) {
+    return { error: `허용되지 않는 파일 형식입니다 (${file.type})` };
+  }
+
   const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
+
   const workspaceId = await getCurrentWorkspaceId();
   const safeName = file.name.replace(/[^\w.\-]/g, '_');
   const path = `${workspaceId}/${channelId}/${crypto.randomUUID()}-${safeName}`;
@@ -375,4 +407,103 @@ export async function getMentionCandidates(query: string, type: string): Promise
     const label = src.labelColumns.map((c) => row[c]).filter(Boolean).map(String).join(' · ');
     return { entity_type: def.type, entity_id: id, label: label || id.slice(0, 8) };
   });
+}
+
+// ─── 맥락 패널: 채널 메시지에서 언급된 엔티티의 실시간 정보 조회 ───
+
+export interface EntityDetail {
+  entity_type: string;
+  entity_id: string;
+  label: string;
+  info: string;       // 상태·재고 등 핵심 한 줄
+  href: string;
+  chip: string;       // tailwind 칩 색상 (레지스트리에서)
+}
+
+export async function getChatEntityDetails(
+  mentions: { entity_type: string; entity_id: string; label: string }[],
+): Promise<EntityDetail[]> {
+  if (!mentions.length) return [];
+  const supabase = await createClient();
+
+  // entity_type별로 그룹핑 후 한 번의 쿼리로 처리
+  const grouped = new Map<string, { id: string; label: string }[]>();
+  for (const m of mentions) {
+    const cur = grouped.get(m.entity_type) ?? [];
+    if (!cur.some((x) => x.id === m.entity_id)) {
+      cur.push({ id: m.entity_id, label: m.label });
+    }
+    grouped.set(m.entity_type, cur);
+  }
+
+  const results: EntityDetail[] = [];
+
+  for (const [type, items] of grouped.entries()) {
+    const def = getEntityDef(type);
+    const ids = items.map((i) => i.id);
+    const chip = def?.chip ?? 'bg-gray-50 text-gray-700 border-gray-200';
+    const href = (id: string) => def?.href(id) ?? '#';
+
+    if (type === 'company') {
+      const { data } = await supabase
+        .from('companies').select('id, name, status').in('id', ids);
+      const statusLabel: Record<string, string> = { active: '활성', pending: '승인대기', suspended: '정지' };
+      for (const row of data ?? []) {
+        results.push({ entity_type: type, entity_id: row.id, label: row.name,
+          info: statusLabel[row.status] ?? row.status, href: href(row.id), chip });
+      }
+    } else if (type === 'order') {
+      const { data } = await supabase
+        .from('orders').select('id, order_number, status, order_items(unit_price, quantity)').in('id', ids);
+      const statusLabel: Record<string, string> = { pending: '확정대기', confirmed: '확정', shipped: '출고', completed: '완료', cancelled: '취소' };
+      for (const row of data ?? []) {
+        const total = ((row.order_items ?? []) as { unit_price: number; quantity: number }[])
+          .reduce((s, i) => s + i.unit_price * i.quantity, 0);
+        const totalStr = total > 0 ? ` · ₩${total.toLocaleString()}` : '';
+        results.push({ entity_type: type, entity_id: row.id, label: row.order_number,
+          info: `${statusLabel[row.status] ?? row.status}${totalStr}`, href: href(row.id), chip });
+      }
+    } else if (type === 'quotation') {
+      const { data } = await supabase
+        .from('quotations').select('id, quote_number, status, total_amount').in('id', ids);
+      const statusLabel: Record<string, string> = { draft: '초안', sent: '발송완료', accepted: '수락', rejected: '거절' };
+      for (const row of data ?? []) {
+        const totalStr = row.total_amount ? ` · ₩${Number(row.total_amount).toLocaleString()}` : '';
+        results.push({ entity_type: type, entity_id: row.id, label: row.quote_number ?? '견적',
+          info: `${statusLabel[row.status] ?? row.status}${totalStr}`, href: href(row.id), chip });
+      }
+    } else if (type === 'product') {
+      const { data } = await supabase
+        .from('products').select('id, name, base_stock').in('id', ids);
+      for (const row of data ?? []) {
+        results.push({ entity_type: type, entity_id: row.id, label: row.name,
+          info: `재고 ${row.base_stock ?? 0}개`, href: href(row.id), chip });
+      }
+    } else if (type === 'as') {
+      const { data } = await supabase
+        .from('as_requests').select('id, request_number, status').in('id', ids);
+      const statusLabel: Record<string, string> = { received: '접수', inspecting: '점검중', repairing: '수리중', completed: '완료' };
+      for (const row of data ?? []) {
+        results.push({ entity_type: type, entity_id: row.id,
+          label: row.request_number ?? 'A/S',
+          info: statusLabel[row.status] ?? row.status, href: href(row.id), chip });
+      }
+    } else if (type === 'deal') {
+      const { data } = await supabase
+        .from('deals').select('id, title, deal_stages(name)').in('id', ids);
+      for (const row of data ?? []) {
+        const stage = (row.deal_stages as { name: string } | null)?.name ?? '-';
+        results.push({ entity_type: type, entity_id: row.id, label: row.title,
+          info: stage, href: href(row.id), chip });
+      }
+    } else {
+      // 그 외(warehouse, receiving, category 등): label만 표시
+      for (const item of items) {
+        results.push({ entity_type: type, entity_id: item.id, label: item.label,
+          info: '', href: href(item.id), chip });
+      }
+    }
+  }
+
+  return results;
 }

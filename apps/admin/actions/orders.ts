@@ -93,11 +93,9 @@ async function logCrm(
 /** pending → confirmed: 재고 원자적 차감 */
 export async function confirmOrder(id: string) {
   const supabase = await createClient();
-  const authClient = await createClient();
-
-  // 현재 로그인 사용자 이메일
-  const { data: { user } } = await authClient.auth.getUser();
-  const confirmedBy = user?.email ?? null;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
+  const confirmedBy = user.email ?? null;
 
   // 주문 정보 조회 (company_id + 업체 정보)
   const { data: order } = await supabase
@@ -333,6 +331,8 @@ export async function batchCompleteOrders(ids: string[]) {
 /** pending/confirmed → cancelled: 취소 (confirmed면 재고 복원) */
 export async function cancelOrder(id: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const { data: order } = await supabase
     .from('orders')
@@ -446,6 +446,8 @@ export async function updateOrderItems(
   items: { product_id: string; quantity: number; unit_price: number }[],
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   // 발주 상태 확인
   const { data: order } = await supabase

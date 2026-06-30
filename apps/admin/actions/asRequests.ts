@@ -92,6 +92,8 @@ export async function getAsRequest(id: string) {
 export async function createAsRequest(formData: FormData) {
   if (process.env.PREVIEW_MODE === 'true') return { error: '미리보기 모드에서는 생성할 수 없습니다' };
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
   const workspaceId = await getCurrentWorkspaceId();
 
   // 채번: AS-YYYY-NNN
@@ -158,6 +160,8 @@ export async function updateAsStatus(
     return {};
   }
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const updates: Record<string, unknown> = { status };
   if (status === 'completed') updates.completed_at = new Date().toISOString();
@@ -207,6 +211,8 @@ export async function updateAsRequest(
     return {};
   }
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const { error } = await supabase
     .from('as_requests')
@@ -242,6 +248,8 @@ export async function completeInspection(
     return {};
   }
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const updateData: Record<string, unknown> = {
     inspection_content: inspectionContent,
@@ -275,6 +283,8 @@ export async function completeInspection(
 export async function deleteAsRequest(id: string) {
   if (process.env.PREVIEW_MODE === 'true') return { error: '미리보기 모드에서는 삭제할 수 없습니다' };
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
   const { error } = await supabase.from('as_requests').delete().eq('id', id);
   if (error) return { error: error.message };
   revalidatePath('/as');

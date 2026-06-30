@@ -18,8 +18,9 @@ export async function logActivity(input: {
   dueAt?: string | null;     // task 마감
 }): Promise<{ error?: string; success?: boolean }> {
   const supabase = await createClient();
-  const workspaceId = await getCurrentWorkspaceId();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
+  const workspaceId = await getCurrentWorkspaceId();
 
   const { error } = await supabase.from('crm_logs').insert({
     workspace_id: workspaceId,
@@ -78,6 +79,8 @@ export async function addActivity(input: {
 // task 완료 토글 (팔로업 체크)
 export async function toggleActivityDone(id: string, done: boolean): Promise<{ error?: string; success?: boolean }> {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
   const { error } = await supabase.from('crm_logs').update({ done }).eq('id', id);
   if (error) return { error: error.message };
   return { success: true };

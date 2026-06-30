@@ -162,6 +162,8 @@ export async function directShipProduct(input: {
   }
 
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
   const workspaceId = await getCurrentWorkspaceId();
 
   // 가용 재고 확인
@@ -280,6 +282,8 @@ export async function directShipProduct(input: {
 
 export async function processBarcodeScan(formData: FormData) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
   const workspaceId = await getCurrentWorkspaceId();
 
   const parsed = ScanSchema.safeParse({

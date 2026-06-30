@@ -57,6 +57,8 @@ export async function getProduct(id: string) {
 
 export async function createProduct(formData: FormData) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const parsed = ProductSchema.safeParse({
     name: formData.get('name'),
@@ -158,6 +160,8 @@ export async function createProduct(formData: FormData) {
 
 export async function updateProduct(id: string, formData: FormData) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const UpdateSchema = ProductSchema.omit({ base_stock: true });
   const parsed = UpdateSchema.safeParse({
@@ -270,6 +274,8 @@ export async function getProductSerials(
 // 시리얼 상태 변경
 export async function updateSerialStatus(serialId: string, status: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
   const { error } = await supabase
     .from('inventory_items')
     .update({ status })
@@ -282,6 +288,8 @@ export async function updateSerialStatus(serialId: string, status: string) {
 // 시리얼 일괄 상태 변경
 export async function updateSerialsStatusBatch(serialIds: string[], status: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
   const { error } = await supabase
     .from('inventory_items')
     .update({ status })
@@ -298,6 +306,8 @@ export async function assignUnitBarcodes(
   parentBarcode: string,
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   if (serialIds.length === 0) return { error: '선택된 시리얼이 없습니다' };
 
@@ -358,6 +368,8 @@ export async function assignUnitBarcodes(
 
 export async function updateUnitBarcode(serialId: string, newBarcode: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const value = newBarcode.trim() || null;
 
@@ -388,6 +400,8 @@ export async function updateUnitBarcode(serialId: string, newBarcode: string) {
 
 export async function updateManufacturerSerial(serialId: string, newSerial: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
   const value = newSerial.trim() || null;
 
   const { error } = await supabase
@@ -672,6 +686,9 @@ export async function getShippedItemsByProduct(productId: string) {
 
 export async function deleteProduct(id: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
+
   const { error } = await supabase.from('products').delete().eq('id', id);
   if (error) return { error: error.message };
 

@@ -19,6 +19,9 @@ export async function GET(
 
   const supabase = await createClient();
 
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return new Response('Unauthorized', { status: 401 });
+
   const { data: quotation, error } = await supabase
     .from('quotations')
     .select('*, companies(name), quotation_items(product_id, label, quantity, unit_price, is_taxable, products(name, barcode))')

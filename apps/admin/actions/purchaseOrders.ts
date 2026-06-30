@@ -158,6 +158,8 @@ export async function getPurchaseOrderDetail(id: string) {
 
 export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
   const workspaceId = await getCurrentWorkspaceId();
 
   const { data: po, error } = await supabase
@@ -203,6 +205,8 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
 
 export async function updatePurchaseOrder(id: string, input: UpdatePurchaseOrderInput | Record<string, unknown>) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const { error } = await supabase
     .from('purchase_orders')
@@ -219,6 +223,8 @@ export async function updatePurchaseOrder(id: string, input: UpdatePurchaseOrder
 
 export async function deletePurchaseOrder(id: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const { error } = await supabase
     .from('purchase_orders')
@@ -240,6 +246,8 @@ export async function addPurchaseOrderItem(
   unitCost?: number,
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const { error } = await supabase.from('purchase_order_items').insert({
     purchase_order_id: poId,
@@ -259,6 +267,8 @@ export async function updatePurchaseOrderItem(
   data: { quantity?: number; unit_cost?: number; memo?: string },
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const { error } = await supabase
     .from('purchase_order_items')
@@ -272,6 +282,8 @@ export async function updatePurchaseOrderItem(
 
 export async function removePurchaseOrderItem(itemId: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const { error } = await supabase
     .from('purchase_order_items')
@@ -290,6 +302,8 @@ export async function addPayment(
   data: { amount: number; method?: string; paid_at: string; label?: string; memo?: string; attachment_url?: string },
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const { error } = await supabase.from('purchase_order_payments').insert({
     purchase_order_id: poId,
@@ -313,6 +327,8 @@ export async function addPayment(
 
 export async function removePayment(paymentId: string, poId: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const { error } = await supabase
     .from('purchase_order_payments')

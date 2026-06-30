@@ -40,9 +40,9 @@ export async function createQuotation(
 ) {
   const supabase = await createClient();
 
-  // 현재 로그인 사용자 이메일
   const { data: { user } } = await supabase.auth.getUser();
-  const issuedBy = user?.email ?? null;
+  if (!user) return { error: '로그인이 필요합니다' };
+  const issuedBy = user.email ?? null;
 
   // 견적번호 채번 (Q-YYYY-NNN)
   const year = new Date().getFullYear();

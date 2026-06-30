@@ -37,6 +37,8 @@ export async function getCategoryProductCounts(): Promise<Record<string, number>
 
 export async function createCategory(name: string, parentId: string | null) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const trimmed = name.trim();
   if (!trimmed) return { error: '카테고리명을 입력하세요' };
@@ -55,6 +57,8 @@ export async function createCategory(name: string, parentId: string | null) {
 
 export async function updateCategory(id: string, name: string, parentId: string | null) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const trimmed = name.trim();
   if (!trimmed) return { error: '카테고리명을 입력하세요' };
@@ -75,6 +79,8 @@ export async function updateCategory(id: string, name: string, parentId: string 
 
 export async function deleteCategory(id: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   // 하위 카테고리가 있으면 삭제 불가
   const { data: children } = await supabase
@@ -103,6 +109,8 @@ export async function deleteCategory(id: string) {
 
 export async function reorderCategory(id: string, sortOrder: number) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
   const { error } = await supabase
     .from('categories')
     .update({ sort_order: sortOrder })

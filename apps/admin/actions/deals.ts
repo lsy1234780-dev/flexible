@@ -29,6 +29,8 @@ export async function getDealStages() {
 
 export async function createDealStage(name: string, kind: 'open' | 'won' | 'lost' = 'open', color?: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
   const workspaceId = await getCurrentWorkspaceId();
 
   const { count } = await supabase
@@ -50,6 +52,8 @@ export async function createDealStage(name: string, kind: 'open' | 'won' | 'lost
 
 export async function updateDealStage(id: string, fields: { name?: string; kind?: 'open' | 'won' | 'lost'; color?: string }) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
   const { error } = await supabase.from('deal_stages').update(fields).eq('id', id);
   if (error) return { error: error.message };
   revalidatePath('/deals');
@@ -58,6 +62,8 @@ export async function updateDealStage(id: string, fields: { name?: string; kind?
 
 export async function reorderDealStages(orderedIds: string[]) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
   // 순서대로 sort_order 재부여
   for (let i = 0; i < orderedIds.length; i++) {
     const { error } = await supabase.from('deal_stages').update({ sort_order: i }).eq('id', orderedIds[i]);
@@ -69,6 +75,8 @@ export async function reorderDealStages(orderedIds: string[]) {
 
 export async function deleteDealStage(id: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
   // 해당 단계의 딜이 있으면 막기 (데이터 보호)
   const { count } = await supabase
     .from('deals')
@@ -119,8 +127,9 @@ export async function createDeal(input: {
 }) {
   if (!input.title?.trim()) return { error: '딜 이름을 입력하세요' };
   const supabase = await createClient();
-  const workspaceId = await getCurrentWorkspaceId();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
+  const workspaceId = await getCurrentWorkspaceId();
 
   // stage 미지정 시 첫 단계(sort_order 최소)로
   let stageId = input.stage_id ?? null;
@@ -154,6 +163,8 @@ export async function createDeal(input: {
 
 export async function updateDeal(id: string, fields: Record<string, unknown>) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
   const { error } = await supabase
     .from('deals')
     .update({ ...fields, updated_at: new Date().toISOString() })
@@ -167,6 +178,8 @@ export async function updateDeal(id: string, fields: Record<string, unknown>) {
 // 칸반 드래그: 단계 이동 + won/lost 단계면 딜 상태 자동 전환 + 활동 로깅
 export async function moveDealStage(dealId: string, stageId: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const { data: stage } = await supabase.from('deal_stages').select('id, name, kind').eq('id', stageId).single();
   if (!stage) return { error: '단계를 찾을 수 없습니다' };
@@ -191,6 +204,8 @@ export async function moveDealStage(dealId: string, stageId: string) {
 
 export async function deleteDeal(id: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
   await supabase.from('crm_logs').delete().eq('entity_type', 'deal').eq('entity_id', id);
   const { error } = await supabase.from('deals').delete().eq('id', id);
   if (error) return { error: error.message };

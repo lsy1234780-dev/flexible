@@ -127,6 +127,9 @@ export async function getCompanyProductPrices(companyId: string): Promise<Record
 
 export async function createCompany(formData: FormData) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
+
   const parsed = CompanySchema.safeParse({
     name: formData.get('name'),
     is_supplier: formData.get('is_supplier') === 'true',
@@ -160,6 +163,8 @@ export async function getSuppliers() {
 
 export async function updateCompanyStatus(id: string, status: 'pending' | 'active' | 'suspended') {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   // 이전 상태 조회
   const { data: prev } = await supabase

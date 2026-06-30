@@ -48,6 +48,8 @@ export async function createWarehouse(input: {
   memo?: string;
 }) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   if (!input.name.trim()) return { error: '창고명을 입력하세요' };
   if (!input.code.trim()) return { error: '창고 코드를 입력하세요' };
@@ -96,6 +98,8 @@ export async function updateWarehouse(
   },
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
@@ -128,6 +132,8 @@ export async function updateWarehouse(
 
 export async function deleteWarehouse(id: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   // 배정된 재고가 있는지 확인
   const { count } = await supabase
@@ -222,6 +228,8 @@ export async function createLocation(input: {
   sort_order?: number;
 }) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   if (!input.name.trim()) return { error: '이름을 입력하세요' };
   if (!input.code.trim()) return { error: '코드를 입력하세요' };
@@ -278,6 +286,8 @@ export async function updateLocation(
   },
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const updates: Record<string, unknown> = {};
 
@@ -305,6 +315,8 @@ export async function updateLocation(
 
 export async function deleteLocation(id: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   // 배정된 재고 확인
   const { count } = await supabase
@@ -398,6 +410,8 @@ export async function upsertWarehouseInventory(input: {
   memo?: string;
 }) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   // 기존 레코드 조회
   let query = supabase
@@ -467,6 +481,8 @@ export async function convertBulkToSerials(input: {
   generate_unit_barcode?: boolean;
 }) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   // 벌크 재고 확인
   const { data: bulk } = await supabase
@@ -537,6 +553,8 @@ export async function moveInventoryItem(
   locationId?: string | null,
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const { error } = await supabase
     .from('inventory_items')
@@ -562,6 +580,8 @@ export async function moveInventoryItemsBatch(
   locationId?: string | null,
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다' };
 
   const { error } = await supabase
     .from('inventory_items')

@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import dayjs from 'dayjs';
-import { Plus, Hash, User, X, Bell, AtSign as AtSignIcon } from 'lucide-react';
+import { Plus, Hash, User, X, Bell, AtSign as AtSignIcon, PanelRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -15,7 +15,7 @@ import {
   type MyMention, type AttachmentInput,
 } from '@/actions/chat';
 import { entityHref } from '@/lib/entityLink';
-import { MessageItem, Composer, type Message, type Mention } from '@/components/chat/ChatParts';
+import { MessageItem, Composer, ContextPanel, type Message, type Mention, type QuotedMessage } from '@/components/chat/ChatParts';
 import type { Channel } from './page';
 
 interface Member { user_id: string; name: string; email: string; department: string | null }
@@ -41,6 +41,9 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
   const [threadParent, setThreadParent] = useState<string | null>(null);
   const [mentions, setMentions] = useState<MyMention[]>([]);
   const [mentionsOpen, setMentionsOpen] = useState(false);
+  const [forwardState, setForwardState] = useState<{ msg: Message; coords: { left: number; top: number } } | null>(null);
+  const [composerQuote, setComposerQuote] = useState<QuotedMessage | null>(null);
+  const [contextOpen, setContextOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const loadMentions = useCallback(async () => {
@@ -147,6 +150,29 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
     if (result.id) setActiveId(result.id);
   }
 
+  function handleForwardClick(msg: Message, rect: DOMRect) {
+    const dropLeft = Math.max(8, Math.min(rect.left, window.innerWidth - 272));
+    const dropUp = rect.bottom + 360 > window.innerHeight;
+    const dropTop = dropUp ? Math.max(8, rect.top - 364) : rect.bottom + 4;
+    setForwardState({ msg, coords: { left: dropLeft, top: dropTop } });
+  }
+
+  async function handleForwardPick(userId: string) {
+    if (!forwardState) return;
+    const channelName = active?.name ?? active?.partner_name ?? '채널';
+    const quote: QuotedMessage = {
+      body: forwardState.msg.body,
+      author: forwardState.msg.author_name ?? '사용자',
+      channelName,
+    };
+    setForwardState(null);
+    const result = await startDirectMessage(userId);
+    if (result?.error) { toast.error(result.error); return; }
+    await refreshChannels();
+    if (result.id) setActiveId(result.id);
+    setComposerQuote(quote);
+  }
+
   const topLevel = messages.filter((m) => !m.reply_to);
   const replyCount = (parentId: string) => messages.filter((m) => m.reply_to === parentId).length;
   const threadMsg = threadParent ? messages.find((m) => m.id === threadParent) ?? null : null;
@@ -239,6 +265,13 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
         <div className="flex items-center gap-1.5 px-4 h-12 border-b">
           {active?.kind === 'dm' ? <User size={16} className="text-gray-400" /> : <Hash size={16} className="text-gray-400" />}
           <span className="font-semibold text-gray-900">{active ? channelLabel(active) : '채널 선택'}</span>
+          <button
+            onClick={() => { setContextOpen((v) => !v); setThreadParent(null); }}
+            className={cn('ml-auto p-1.5 rounded transition-colors', contextOpen ? 'bg-gray-900 text-white' : 'text-gray-400 hover:text-gray-700')}
+            title="이 대화의 맥락"
+          >
+            <PanelRight size={15} />
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
@@ -251,8 +284,9 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
               onReact={handleReact}
               onEdit={handleEdit}
               onDelete={handleDelete}
-              onOpenThread={() => setThreadParent(m.id)}
+              onOpenThread={() => { setThreadParent(m.id); setContextOpen(false); }}
               onJump={jump}
+              onForward={active?.kind === 'channel' ? handleForwardClick : undefined}
               replyCount={replyCount(m.id)}
             />
           ))}
@@ -267,9 +301,28 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
             channelId={activeId}
             placeholder={active?.kind === 'dm' ? `${channelLabel(active)} 에게 메시지…` : `#${active ? channelLabel(active) : ''} 에 메시지…`}
             onSend={(body, mentions, attachments) => handleSend(body, mentions, attachments, null)}
+            quotedMessage={composerQuote}
+            onDismissQuote={() => setComposerQuote(null)}
           />
         )}
       </section>
+
+      {/* DM 전달 멤버 피커 */}
+      {forwardState && (
+        <ForwardMemberPicker
+          coords={forwardState.coords}
+          onPick={handleForwardPick}
+          onClose={() => setForwardState(null)}
+        />
+      )}
+
+      {/* 맥락 패널 */}
+      {contextOpen && !threadMsg && (
+        <ContextPanel
+          messages={messages}
+          onClose={() => setContextOpen(false)}
+        />
+      )}
 
       {/* 스레드 패널 */}
       {threadMsg && (
@@ -298,6 +351,73 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
         </aside>
       )}
     </div>
+  );
+}
+
+// ─── DM 전달용 멤버 피커 (portal, fixed 좌표) ───
+function ForwardMemberPicker({ coords, onPick, onClose }: {
+  coords: { left: number; top: number };
+  onPick: (userId: string) => void;
+  onClose: () => void;
+}) {
+  const [members, setMembers] = useState<Member[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [q, setQ] = useState('');
+
+  useEffect(() => {
+    getWorkspaceMembers().then((m) => { setMembers(m as Member[]); setLoaded(true); });
+  }, []);
+
+  const ql = q.trim().toLowerCase();
+  const filtered = ql
+    ? members.filter((m) =>
+        m.name.toLowerCase().includes(ql) ||
+        m.email.toLowerCase().includes(ql) ||
+        (m.department ?? '').toLowerCase().includes(ql))
+    : members;
+
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-[60]" onClick={onClose} />
+      <div
+        className="fixed z-[61] w-64 rounded-lg border bg-white py-1 shadow-xl"
+        style={{ left: coords.left, top: coords.top }}
+      >
+        <p className="px-3 pt-1 pb-1.5 text-[11px] font-semibold text-gray-400">DM으로 전달할 멤버 선택</p>
+        <div className="px-2 pb-1.5">
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="이름·소속 검색…"
+            className="w-full rounded-md border px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-gray-400"
+          />
+        </div>
+        <div className="max-h-60 overflow-y-auto">
+          {filtered.map((m) => (
+            <button
+              key={m.user_id}
+              onClick={() => onPick(m.user_id)}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-gray-100"
+            >
+              <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-[11px] font-medium text-blue-600">
+                {m.name.slice(0, 1)}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-gray-800">{m.name}</span>
+                <span className="block truncate text-[11px] text-gray-400">{m.department ?? '소속 없음'}</span>
+              </span>
+            </button>
+          ))}
+          {loaded && filtered.length === 0 && (
+            <p className="px-3 py-2 text-xs text-gray-400">{q ? '검색 결과 없음' : '전달할 멤버가 없습니다'}</p>
+          )}
+          {!loaded && <p className="px-3 py-2 text-xs text-gray-400">불러오는 중…</p>}
+        </div>
+      </div>
+    </>,
+    document.body,
   );
 }
 

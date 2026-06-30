@@ -3,18 +3,19 @@
 // 채팅 공용 파츠 — 전체 채팅(/chat)과 미니 위젯이 함께 쓰는 메시지/작성 UI.
 // (모듈화 원칙: 복제하지 않고 한 곳에서 정의해 양쪽이 import.)
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
 import dayjs from 'dayjs';
 import {
   Send, AtSign, X, SmilePlus, MessageSquare, CornerDownRight,
-  ChevronLeft, Pencil, Trash2, Paperclip, FileText, Download,
+  ChevronLeft, Pencil, Trash2, Paperclip, FileText, Download, Share2,
+  ExternalLink, Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import {
-  getMentionCandidates, getMentionCategories, uploadChatFile,
-  type MentionInput, type AttachmentInput,
+  getMentionCandidates, getMentionCategories, uploadChatFile, getChatEntityDetails,
+  type MentionInput, type AttachmentInput, type EntityDetail,
 } from '@/actions/chat';
 import { entityChipClass, ENTITY_LABEL } from '@/lib/entityLink';
 
@@ -90,10 +91,11 @@ export interface MessageItemProps {
   onEdit?: (messageId: string, body: string) => Promise<boolean>;
   onDelete?: (messageId: string) => void;
   onOpenThread?: () => void;
+  onForward?: (msg: Message, rect: DOMRect) => void;
   replyCount?: number;
 }
 
-export function MessageItem({ m, meId, meName, onReact, onJump, onEdit, onDelete, onOpenThread, replyCount = 0 }: MessageItemProps) {
+export function MessageItem({ m, meId, meName, onReact, onJump, onEdit, onDelete, onOpenThread, onForward, replyCount = 0 }: MessageItemProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(m.body);
@@ -136,6 +138,15 @@ export function MessageItem({ m, meId, meName, onReact, onJump, onEdit, onDelete
           {mine && onDelete && (
             <button onClick={() => onDelete(m.id)} className="p-1 text-gray-400 hover:text-red-600" title="삭제">
               <Trash2 size={13} />
+            </button>
+          )}
+          {onForward && (
+            <button
+              onClick={(e) => onForward(m, (e.currentTarget as HTMLButtonElement).getBoundingClientRect())}
+              className="p-1 text-gray-400 hover:text-blue-600"
+              title="DM으로 전달"
+            >
+              <Share2 size={13} />
             </button>
           )}
         </span>
@@ -224,19 +235,26 @@ export function MessageItem({ m, meId, meName, onReact, onJump, onEdit, onDelete
 }
 
 // ─── 작성 컴포넌트 (채널/스레드/미니위젯 공용) — 엔티티 멘션 2단 메뉴 ───
+export interface QuotedMessage { body: string; author: string; channelName: string }
+
 export interface ComposerProps {
   channelId: string;
   placeholder: string;
   onSend: (body: string, mentions: Mention[], attachments: AttachmentInput[]) => Promise<void> | void;
+  quotedMessage?: QuotedMessage | null;
+  onDismissQuote?: () => void;
 }
 
-export function Composer({ channelId, placeholder, onSend }: ComposerProps) {
+export function Composer({ channelId, placeholder, onSend, quotedMessage, onDismissQuote }: ComposerProps) {
   const [body, setBody] = useState('');
   const [pending, setPending] = useState<Mention[]>([]);
   const [files, setFiles] = useState<AttachmentInput[]>([]);
   const [uploading, setUploading] = useState(false);
   const [sending, setSending] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // @ 인라인 트리거: textarea에서 @ 입력 시 멘션 메뉴 자동 오픈
+  const [atIndex, setAtIndex] = useState<number | null>(null);
 
   async function handleFiles(list: FileList | null) {
     if (!list || list.length === 0) return;
@@ -259,6 +277,20 @@ export function Composer({ channelId, placeholder, onSend }: ComposerProps) {
   const [activeCat, setActiveCat] = useState<{ type: string; label: string } | null>(null);
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<MentionInput[]>([]);
+  const [highlightedCat, setHighlightedCat] = useState(-1);
+  const [highlightedItem, setHighlightedItem] = useState(-1);
+  const [atQuery, setAtQuery] = useState('');
+  const filteredCats = useMemo(() => {
+    if (!atQuery) return categories ?? [];
+    const q = atQuery.replace(/\s/g, '').toLowerCase();
+    return (categories ?? []).filter((c) => {
+      // "멤버 멘션" → "멤버멘션" 으로 정규화 후 매칭
+      const normalized = (c.label + '멘션').replace(/\s/g, '').toLowerCase();
+      return normalized.includes(q) || c.label.replace(/\s/g, '').toLowerCase().includes(q);
+    });
+  }, [categories, atQuery]);
+  const catListRef = useRef<HTMLDivElement>(null);
+  const itemListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!menuOpen || categories) return;
@@ -270,47 +302,130 @@ export function Composer({ channelId, placeholder, onSend }: ComposerProps) {
     const t = setTimeout(async () => {
       const rows = await getMentionCandidates(query, activeCat.type);
       setItems(rows);
+      setHighlightedItem(-1);
     }, 180);
     return () => clearTimeout(t);
   }, [activeCat, query]);
+
+  useEffect(() => {
+    if (highlightedItem < 0 || !itemListRef.current) return;
+    const el = itemListRef.current.children[highlightedItem] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [highlightedItem]);
 
   function openMenu() {
     setMenuOpen((v) => !v);
     setActiveCat(null);
     setQuery('');
     setItems([]);
+    setAtIndex(null);
   }
 
   function selectCategory(cat: { type: string; label: string }) {
     setActiveCat(cat);
     setQuery('');
     setItems([]);
+    setHighlightedCat(-1);
+    setHighlightedItem(-1);
+  }
+
+  function closeMenu() {
+    // @ 인라인 트리거로 열린 경우 → @+쿼리 텍스트 제거
+    if (atIndex !== null) {
+      const removeEnd = atIndex + 1 + atQuery.length; // '@' 1자 + 쿼리 길이
+      setBody((prev) => prev.slice(0, atIndex) + prev.slice(removeEnd));
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.setSelectionRange(atIndex, atIndex);
+          textareaRef.current.focus();
+        }
+      }, 0);
+    }
+    setMenuOpen(false);
+    setActiveCat(null);
+    setQuery('');
+    setItems([]);
+    setHighlightedCat(-1);
+    setHighlightedItem(-1);
+    setAtIndex(null);
+    setAtQuery('');
   }
 
   function addMention(m: MentionInput) {
     if (!pending.some((p) => p.entity_type === m.entity_type && p.entity_id === m.entity_id)) {
       setPending((prev) => [...prev, m]);
     }
-    setMenuOpen(false);
-    setActiveCat(null);
-    setQuery('');
-    setItems([]);
+    // 인라인 @ 트리거였으면 @ + 이후 타이핑된 텍스트 제거
+    if (atIndex !== null) {
+      const cursor = textareaRef.current?.selectionStart ?? body.length;
+      const before = body.slice(0, atIndex);
+      const after = body.slice(cursor);
+      setBody(before + after);
+      // 커서를 @ 위치로 복원
+      setTimeout(() => {
+        textareaRef.current?.setSelectionRange(atIndex, atIndex);
+        textareaRef.current?.focus();
+      }, 0);
+    }
+    closeMenu();
+  }
+
+  function handleBodyChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const val = e.target.value;
+    setBody(val);
+
+    const cursor = e.target.selectionStart ?? val.length;
+    const before = val.slice(0, cursor);
+    // @ 뒤에 공백·줄바꿈이 없으면 인라인 트리거로 간주
+    const match = /@([^\s@]*)$/.exec(before);
+    if (match) {
+      const idx = match.index;
+      setAtIndex(idx);
+      setAtQuery(match[1]);
+      setHighlightedCat(-1);
+      if (!menuOpen) {
+        setMenuOpen(true);
+        setActiveCat(null);
+        setQuery('');
+        setItems([]);
+      }
+    } else if (menuOpen && atIndex !== null) {
+      // 공백 입력 또는 @ 삭제 → 메뉴 닫기
+      closeMenu();
+    }
   }
 
   async function submit() {
-    if (!body.trim() && pending.length === 0 && files.length === 0) return;
+    if (!body.trim() && pending.length === 0 && files.length === 0 && !quotedMessage) return;
     setSending(true);
-    await onSend(body, pending, files);
+    const finalBody = quotedMessage
+      ? `> [#${quotedMessage.channelName}] ${quotedMessage.author}: ${quotedMessage.body}${body.trim() ? `\n\n${body}` : ''}`
+      : body;
+    await onSend(finalBody, pending, files);
     setSending(false);
     setBody('');
     setPending([]);
     setFiles([]);
+    onDismissQuote?.();
   }
 
   return (
     <div className="border-t p-3 relative">
+      {quotedMessage && (
+        <div className="mb-2 flex items-start gap-2 rounded-md border-l-2 border-blue-400 bg-blue-50/60 px-2 py-1.5">
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-medium text-blue-600 mb-0.5">
+              #{quotedMessage.channelName} · {quotedMessage.author}
+            </p>
+            <p className="text-sm text-gray-700 line-clamp-3 whitespace-pre-wrap break-words">{quotedMessage.body}</p>
+          </div>
+          <button onClick={onDismissQuote} className="flex-shrink-0 mt-0.5 text-gray-400 hover:text-gray-600">
+            <X size={13} />
+          </button>
+        </div>
+      )}
       {pending.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-1">
+        <div className="mb-2 flex flex-wrap gap-0">
           {pending.map((m, i) => (
             <span key={i} className={cn('inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs', entityChipClass(m.entity_type))}>
               <span className="opacity-60">{ENTITY_LABEL[m.entity_type] ?? m.entity_type}</span>
@@ -339,46 +454,78 @@ export function Composer({ channelId, placeholder, onSend }: ComposerProps) {
       )}
 
       {menuOpen && (
-        <div className="absolute bottom-full left-3 mb-1 w-72 rounded-lg border bg-white shadow-lg overflow-hidden">
+        <div
+          className="absolute bottom-full left-3 mb-1 w-72 rounded-lg border bg-white shadow-lg overflow-hidden"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              e.stopPropagation();
+              closeMenu();
+              textareaRef.current?.focus();
+            }
+          }}
+        >
           {!activeCat ? (
-            <div className="py-1">
-              <p className="px-3 py-1 text-[11px] font-semibold text-gray-400">무엇을 멘션할까요?</p>
-              {(categories ?? []).map((cat) => (
+            <div className="py-1" ref={catListRef}>
+              <p className="px-3 py-1 text-[11px] font-semibold text-gray-400">
+                {atIndex !== null ? `@ 멘션${atQuery ? ` — "${atQuery}"` : ' — 무엇을 태그할까요?'}` : '무엇을 멘션할까요?'}
+              </p>
+              {filteredCats.map((cat, i) => (
                 <button
                   key={cat.type}
                   onClick={() => selectCategory(cat)}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100"
+                  className={cn('flex w-full items-center gap-2 px-3 py-2 text-left text-sm', highlightedCat === i ? 'bg-gray-100' : 'hover:bg-gray-100')}
                 >
                   <span className={cn('rounded border px-1.5 py-0.5 text-[10px]', entityChipClass(cat.type))}>{cat.label}</span>
                   <span className="text-gray-700">{cat.label} 멘션</span>
                 </button>
               ))}
-              {categories && categories.length === 0 && (
-                <p className="px-3 py-3 text-xs text-gray-400">멘션 가능한 모듈이 없습니다</p>
+              {categories && filteredCats.length === 0 && (
+                <p className="px-3 py-3 text-xs text-gray-400">{atQuery ? `"${atQuery}"에 맞는 멘션 유형이 없습니다` : '멘션 가능한 모듈이 없습니다'}</p>
               )}
               {!categories && <p className="px-3 py-3 text-xs text-gray-400">불러오는 중…</p>}
             </div>
           ) : (
             <div>
               <div className="flex items-center gap-1 border-b px-2 py-1.5">
-                <button onClick={() => setActiveCat(null)} className="p-1 text-gray-400 hover:text-gray-700">
+                <button onClick={() => { setActiveCat(null); setHighlightedItem(-1); }} className="p-1 text-gray-400 hover:text-gray-700">
                   <ChevronLeft size={14} />
                 </button>
                 <span className={cn('rounded border px-1.5 py-0.5 text-[10px]', entityChipClass(activeCat.type))}>{activeCat.label}</span>
                 <input
                   autoFocus
                   value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                  onChange={(e) => { setQuery(e.target.value); setHighlightedItem(-1); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setHighlightedItem((p) => Math.min(p + 1, items.length - 1));
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setHighlightedItem((p) => Math.max(p - 1, -1));
+                    } else if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (highlightedItem >= 0 && items[highlightedItem]) {
+                        addMention(items[highlightedItem]);
+                      } else if (items.length === 1) {
+                        addMention(items[0]);
+                      }
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      setActiveCat(null);
+                      setHighlightedItem(-1);
+                    }
+                  }}
                   placeholder={`${activeCat.label} 검색…`}
                   className="flex-1 px-1 py-0.5 text-sm outline-none"
                 />
               </div>
-              <div className="max-h-56 overflow-y-auto py-1">
-                {items.map((c) => (
+              <div ref={itemListRef} className="max-h-56 overflow-y-auto py-1">
+                {items.map((c, i) => (
                   <button
                     key={`${c.entity_type}-${c.entity_id}`}
                     onClick={() => addMention(c)}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100"
+                    className={cn('flex w-full items-center gap-2 px-3 py-2 text-left text-sm', highlightedItem === i ? 'bg-gray-100' : 'hover:bg-gray-100')}
                   >
                     <span className="truncate">{c.label}</span>
                   </button>
@@ -410,10 +557,35 @@ export function Composer({ channelId, placeholder, onSend }: ComposerProps) {
           <AtSign size={16} />
         </button>
         <textarea
+          ref={textareaRef}
           value={body}
-          onChange={(e) => setBody(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
-          placeholder={`${placeholder} (Enter 전송, Shift+Enter 줄바꿈)`}
+          onChange={handleBodyChange}
+          onKeyDown={(e) => {
+            if (menuOpen && !activeCat && filteredCats.length > 0) {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setHighlightedCat((p) => Math.min(p + 1, filteredCats.length - 1));
+                return;
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setHighlightedCat((p) => Math.max(p - 1, 0));
+                return;
+              }
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                if (highlightedCat >= 0) {
+                  selectCategory(filteredCats[highlightedCat]);
+                } else if (filteredCats.length === 1) {
+                  selectCategory(filteredCats[0]);
+                }
+                return;
+              }
+            }
+            if (e.key === 'Escape' && menuOpen) { e.preventDefault(); closeMenu(); return; }
+            if (e.key === 'Enter' && !e.shiftKey && !menuOpen) { e.preventDefault(); submit(); }
+          }}
+          placeholder={`${placeholder} (Enter 전송, Shift+Enter 줄바꿈, @ 멘션)`}
           rows={1}
           className="flex-1 resize-none rounded-md border px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-gray-400"
         />
@@ -426,5 +598,101 @@ export function Composer({ channelId, placeholder, onSend }: ComposerProps) {
         </button>
       </div>
     </div>
+  );
+}
+
+// ─── 맥락 패널 ───
+// 현재 채널 메시지에서 언급된 엔티티를 수집해 실시간 정보를 보여준다.
+
+export interface ContextPanelProps {
+  messages: Message[];
+  onClose: () => void;
+}
+
+export function ContextPanel({ messages, onClose }: ContextPanelProps) {
+  const [details, setDetails] = useState<EntityDetail[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // 전체 메시지에서 고유 멘션 수집
+    const seen = new Set<string>();
+    const unique: { entity_type: string; entity_id: string; label: string }[] = [];
+    for (const m of messages) {
+      for (const mn of m.message_mentions ?? []) {
+        const key = `${mn.entity_type}:${mn.entity_id}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          unique.push(mn);
+        }
+      }
+    }
+    if (!unique.length) { setDetails([]); setLoading(false); return; }
+    setLoading(true);
+    getChatEntityDetails(unique).then((d) => { setDetails(d); setLoading(false); });
+  }, [messages]);
+
+  // entity_type별로 그룹핑
+  const grouped = new Map<string, EntityDetail[]>();
+  for (const d of details) {
+    const cur = grouped.get(d.entity_type) ?? [];
+    cur.push(d);
+    grouped.set(d.entity_type, cur);
+  }
+
+  const typeLabel: Record<string, string> = {
+    company: '거래처', order: '수주', quotation: '견적', product: '제품',
+    as: 'A/S', deal: '딜', receiving: '입고', warehouse: '창고', user: '멤버',
+  };
+
+  return (
+    <aside className="w-72 flex-shrink-0 border-l flex flex-col bg-white">
+      <div className="flex items-center justify-between px-4 h-12 border-b">
+        <span className="text-sm font-semibold text-gray-700">이 대화의 맥락</span>
+        <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-700">
+          <X size={16} />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
+        {loading && (
+          <div className="flex items-center justify-center py-8 text-gray-400">
+            <Loader2 size={16} className="animate-spin mr-2" />
+            <span className="text-sm">불러오는 중…</span>
+          </div>
+        )}
+
+        {!loading && details.length === 0 && (
+          <div className="py-8 text-center">
+            <p className="text-sm text-gray-400">언급된 레코드가 없습니다.</p>
+            <p className="text-xs text-gray-300 mt-1">@ 버튼으로 거래처·수주 등을 태그하면 여기 표시됩니다.</p>
+          </div>
+        )}
+
+        {!loading && [...grouped.entries()].map(([type, items]) => (
+          <div key={type}>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+              {typeLabel[type] ?? type}
+            </p>
+            <div className="space-y-1.5">
+              {items.map((item) => (
+                <a
+                  key={item.entity_id}
+                  href={item.href}
+                  className="flex items-start justify-between gap-2 rounded-lg border bg-gray-50 px-3 py-2 hover:bg-gray-100 transition-colors group"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-800 truncate">{item.label}</p>
+                    {item.info && (
+                      <p className="text-xs text-gray-500 mt-0.5">{item.info}</p>
+                    )}
+                  </div>
+                  <ExternalLink size={12} className="flex-shrink-0 mt-1 text-gray-300 group-hover:text-gray-500" />
+                </a>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </aside>
   );
 }

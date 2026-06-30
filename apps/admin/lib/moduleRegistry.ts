@@ -78,7 +78,7 @@ export const ENTITY_REGISTRY: EntityDef[] = [
     chip: 'bg-teal-50 text-teal-700 hover:bg-teal-100 border-teal-200',
   },
   {
-    type: 'warehouse', label: '창고', module: 'inventory',
+    type: 'warehouse', label: '창고', module: 'logistics',
     source: { table: 'warehouses', labelColumns: ['name'], searchColumns: ['name'], orderColumn: 'created_at' },
     href: () => '/warehouses',
     chip: 'bg-cyan-50 text-cyan-700 hover:bg-cyan-100 border-cyan-200',

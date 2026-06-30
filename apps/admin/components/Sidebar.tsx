@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Package, ClipboardList, Building2, FileText, ShoppingCart,
   Tags, FolderTree, Menu, X, ChevronDown, ExternalLink, ClipboardCheck, Settings, Wrench, Layers,
-  PanelLeftClose, PanelLeftOpen, LogOut, PackageCheck, Warehouse, Search, ShieldCheck, TrendingUp, Target, MessageSquare,
+  PanelLeftClose, PanelLeftOpen, LogOut, PackageCheck, Warehouse, Search, ShieldCheck, TrendingUp, Target, MessageSquare, LayoutDashboard,
 } from 'lucide-react';
 import InventoryFinderModal from '@/components/InventoryFinderModal';
 import { useMemo, useState, useTransition } from 'react';
@@ -32,6 +32,12 @@ interface NavGroup {
 }
 
 const allNavGroups: NavGroup[] = [
+  {
+    label: '홈',
+    items: [
+      { href: '/dashboard', label: '대시보드', icon: LayoutDashboard, exact: true },
+    ],
+  },
   {
     label: '상품관리',
     items: [

@@ -34,10 +34,10 @@ erp-workspace/
 
 | 레포 | 경로 | 역할 |
 |------|------|------|
-| `BOSEON-SEO/auth-lib` | `packages/auth-lib` (git submodule or pnpm link) | Supabase Auth / Keycloak 로그인·세션 |
-| `BOSEON-SEO/barqr-lib` | `packages/barqr-lib` | 바코드·QR 생성 및 BT 스캐너 읽기 |
-| `BOSEON-SEO/email-lib` | `packages/email-lib` | Resend 이메일 발송 |
-| `BOSEON-SEO/pdf-lib` | `packages/pdf-lib` | JSON → 견적서 PDF 생성 |
+| `lsy1234780/auth-lib` | `packages/auth-lib` (git submodule or pnpm link) | Supabase Auth / Keycloak 로그인·세션 |
+| `lsy1234780/barqr-lib` | `packages/barqr-lib` | 바코드·QR 생성 및 BT 스캐너 읽기 |
+| `lsy1234780/email-lib` | `packages/email-lib` | Resend 이메일 발송 |
+| `lsy1234780/pdf-lib` | `packages/pdf-lib` | JSON → 견적서 PDF 생성 |
 
 > 각 레포의 실제 export 인터페이스는 해당 레포의 `CLAUDE.md` 또는 `README.md`를 먼저 읽고 파악하세요.
 > 추측으로 import하지 마세요.
@@ -221,7 +221,7 @@ company_products 레코드 있음?
 ```ts
 // 반드시 해당 레포 CLAUDE.md 읽고 실제 export 확인 후 사용
 // Next.js 미들웨어에서 세션 보호
-import { createServerClient } from '@boseon/auth-lib/server';
+import { createServerClient } from '@lsy1234780/auth-lib/server';
 
 // 예상 패턴 (실제 인터페이스는 레포에서 확인)
 export async function middleware(request: NextRequest) {
@@ -235,22 +235,22 @@ export async function middleware(request: NextRequest) {
 ### barqr-lib
 ```ts
 // BT 스캐너 입고 처리
-import { onScanInput } from '@boseon/barqr-lib';
+import { onScanInput } from '@lsy1234780/barqr-lib';
 
 // 바코드 생성
-import { generateBarcode } from '@boseon/barqr-lib';
+import { generateBarcode } from '@lsy1234780/barqr-lib';
 ```
 
 ### email-lib
 ```ts
 // 입고 알림, 주문 확정 메일
-import { sendMail } from '@boseon/email-lib';
+import { sendMail } from '@lsy1234780/email-lib';
 ```
 
 ### pdf-lib
 ```ts
 // 견적서 PDF — 단가는 호출 측에서 결정해서 전달
-import { generateQuotation } from '@boseon/pdf-lib';
+import { generateQuotation } from '@lsy1234780/pdf-lib';
 
 const buffer = await generateQuotation({
   quotationNumber: 'Q-2025-001',

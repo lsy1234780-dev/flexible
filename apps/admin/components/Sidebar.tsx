@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Package, ClipboardList, Building2, FileText, ShoppingCart,
   Tags, FolderTree, Menu, X, ChevronDown, ExternalLink, ClipboardCheck, Settings, Wrench, Layers,
-  PanelLeftClose, PanelLeftOpen, LogOut, PackageCheck, Warehouse, Search, ShieldCheck, TrendingUp, Target, MessageSquare, LayoutDashboard,
+  PanelLeftClose, PanelLeftOpen, LogOut, PackageCheck, Warehouse, Search, ShieldCheck, TrendingUp, Target, MessageSquare, LayoutDashboard, Inbox,
 } from 'lucide-react';
 import InventoryFinderModal from '@/components/InventoryFinderModal';
 import { useMemo, useState, useTransition } from 'react';
@@ -35,6 +35,7 @@ const allNavGroups: NavGroup[] = [
   {
     label: '홈',
     items: [
+      { href: '/inbox', label: '인박스', icon: Inbox, exact: true },
       { href: '/dashboard', label: '대시보드', icon: LayoutDashboard, exact: true },
     ],
   },
@@ -151,7 +152,8 @@ export default function Sidebar({ role, menuRules, departmentLabels = {}, positi
     );
   }
 
-  const NavLinks = () => (
+  // 렌더 중 컴포넌트 생성 방지(react-hooks/static-components) — JSX 헬퍼 함수로 호출
+  const renderNavLinks = () => (
     <nav className="flex flex-col gap-0.5 p-3">
       {navGroups.map((group) => {
         const groupActive = isGroupActive(group);
@@ -246,7 +248,7 @@ export default function Sidebar({ role, menuRules, departmentLabels = {}, positi
     </nav>
   );
 
-  const BottomNav = () => (
+  const renderBottomNav = () => (
     <div className="border-t">
       <div className="p-3 space-y-0.5">
         {withTooltip(
@@ -330,8 +332,8 @@ export default function Sidebar({ role, menuRules, departmentLabels = {}, positi
             className="absolute left-0 top-14 bottom-0 w-56 bg-white shadow-lg flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex-1 overflow-y-auto"><NavLinks /></div>
-            <BottomNav />
+            <div className="flex-1 overflow-y-auto">{renderNavLinks()}</div>
+            {renderBottomNav()}
           </div>
         </div>
       )}
@@ -357,8 +359,8 @@ export default function Sidebar({ role, menuRules, departmentLabels = {}, positi
             </TooltipContent>
           </Tooltip>
         </div>
-        <div className="flex-1 overflow-y-auto"><NavLinks /></div>
-        <BottomNav />
+        <div className="flex-1 overflow-y-auto">{renderNavLinks()}</div>
+        {renderBottomNav()}
       </aside>
 
       {/* 모바일 top padding 확보 */}

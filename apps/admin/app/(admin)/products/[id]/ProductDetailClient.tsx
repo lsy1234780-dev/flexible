@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { ArrowLeft, Barcode, Pencil, Package, Trash2, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import ShareToChat from '@/components/ShareToChat';
+import RecordThread from '@/components/RecordThread';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -287,6 +288,13 @@ export default function ProductDetailClient({ product, categories }: Props) {
 
       {/* 개별 시리얼 바코드 */}
       <ProductSerialsSection productId={product.id} productName={product.name} productBarcode={product.barcode} />
+
+      {/* 레코드 스레드 — 이 제품에 붙는 대화 + 역링크 */}
+      <Card>
+        <CardContent className="py-4">
+          <RecordThread entityType="product" entityId={product.id} entityLabel={product.name} />
+        </CardContent>
+      </Card>
 
       {/* 수정 다이얼로그 */}
       <ModalBase

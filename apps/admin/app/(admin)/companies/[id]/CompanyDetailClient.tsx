@@ -17,7 +17,7 @@ import { upsertCompanyProduct, updateCompanyStatus, updateCompany } from '@/acti
 import { addCrmMemo } from '@/actions/orders';
 import CountrySelect from '@/components/CountrySelect';
 import ShareToChat from '@/components/ShareToChat';
-import RecordChatPanel from '@/components/RecordChatPanel';
+import RecordThread from '@/components/RecordThread';
 import type { Company, CrmLog } from '@/types/database';
 import dayjs from 'dayjs';
 
@@ -735,10 +735,10 @@ export default function CompanyDetailClient({ company, companyProducts, crmLogs,
           </CardContent>
         </Card>
 
-        {/* 관련 대화 (역링크) */}
+        {/* 레코드 스레드 — 이 거래처에 붙는 대화 + 역링크 */}
         <Card>
           <CardContent className="py-4">
-            <RecordChatPanel entityType="company" entityId={company.id} />
+            <RecordThread entityType="company" entityId={company.id} entityLabel={company.name} />
           </CardContent>
         </Card>
       </div>

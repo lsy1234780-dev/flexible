@@ -11,7 +11,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import ShareToChat from '@/components/ShareToChat';
-import RecordChatPanel from '@/components/RecordChatPanel';
+import RecordThread from '@/components/RecordThread';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -1411,10 +1411,14 @@ export default function OrderDetailClient({ order }: Props) {
         </>
       )}
 
-      {/* 관련 대화 (역링크) */}
+      {/* 레코드 스레드 — 이 수주에 붙는 대화 + 시스템 이벤트 + 역링크 */}
       <Card>
         <CardContent className="py-4">
-          <RecordChatPanel entityType="order" entityId={order.id} />
+          <RecordThread
+            entityType="order"
+            entityId={order.id}
+            entityLabel={order.order_number ?? `수주 ${order.id.slice(0, 8)}`}
+          />
         </CardContent>
       </Card>
 

@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { updateAsStatus, updateAsRequest, deleteAsRequest, getWarrantyBySerial } from '@/actions/asRequests';
 import ShareToChat from '@/components/ShareToChat';
+import RecordThread from '@/components/RecordThread';
 import type { AsStatus } from '@/lib/asConstants';
 import dayjs from 'dayjs';
 
@@ -650,6 +651,15 @@ export default function AsDetailClient({ request }: Props) {
             })}
           </div>
         )}
+      </div>
+
+      {/* 레코드 스레드 — 이 A/S 건에 붙는 대화 + 역링크 */}
+      <div className="bg-white border rounded-xl p-4">
+        <RecordThread
+          entityType="as"
+          entityId={request.id}
+          entityLabel={request.number ?? request.product_name ?? 'A/S'}
+        />
       </div>
     </div>
   );

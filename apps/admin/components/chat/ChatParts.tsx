@@ -9,7 +9,7 @@ import dayjs from 'dayjs';
 import {
   Send, AtSign, X, SmilePlus, MessageSquare, CornerDownRight,
   ChevronLeft, Pencil, Trash2, Paperclip, FileText, Download, Share2,
-  ExternalLink, Loader2,
+  ExternalLink, Loader2, Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
@@ -29,6 +29,7 @@ export interface Message {
   author_id: string | null;
   author_name: string | null;
   body: string;
+  is_system?: boolean;   // ERP 봇 시스템 메시지 (상태 전이 자동 기록)
   created_at: string;
   edited_at: string | null;
   reply_to: string | null;
@@ -100,6 +101,17 @@ export function MessageItem({ m, meId, meName, onReact, onJump, onEdit, onDelete
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(m.body);
   const mine = m.author_id === meId;
+
+  // 시스템(ERP 봇) 메시지 — 상태 전이 자동 기록. 회색 한 줄로 컴팩트하게.
+  if (m.is_system) {
+    return (
+      <div className="flex items-center gap-2 py-0.5 text-xs text-gray-400">
+        <Bot size={12} className="flex-shrink-0 text-gray-300" />
+        <span className="min-w-0 break-words">{m.body}</span>
+        <span className="ml-auto flex-shrink-0 text-[10px] text-gray-300">{dayjs(m.created_at).format('MM.DD HH:mm')}</span>
+      </div>
+    );
+  }
 
   async function saveEdit() {
     if (!onEdit) return;
@@ -610,26 +622,33 @@ export interface ContextPanelProps {
 }
 
 export function ContextPanel({ messages, onClose }: ContextPanelProps) {
-  const [details, setDetails] = useState<EntityDetail[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    // 전체 메시지에서 고유 멘션 수집
+  // 전체 메시지에서 고유 멘션 수집 (렌더 파생값 — effect에서 동기 setState 금지)
+  const unique = useMemo(() => {
     const seen = new Set<string>();
-    const unique: { entity_type: string; entity_id: string; label: string }[] = [];
+    const arr: { entity_type: string; entity_id: string; label: string }[] = [];
     for (const m of messages) {
       for (const mn of m.message_mentions ?? []) {
         const key = `${mn.entity_type}:${mn.entity_id}`;
         if (!seen.has(key)) {
           seen.add(key);
-          unique.push(mn);
+          arr.push(mn);
         }
       }
     }
-    if (!unique.length) { setDetails([]); setLoading(false); return; }
-    setLoading(true);
-    getChatEntityDetails(unique).then((d) => { setDetails(d); setLoading(false); });
+    return arr;
   }, [messages]);
+
+  const [fetched, setFetched] = useState<EntityDetail[] | null>(null);
+
+  useEffect(() => {
+    if (unique.length === 0) return;
+    let alive = true;
+    getChatEntityDetails(unique).then((d) => { if (alive) setFetched(d); });
+    return () => { alive = false; };
+  }, [unique]);
+
+  const details = unique.length === 0 ? [] : (fetched ?? []);
+  const loading = unique.length > 0 && fetched === null;
 
   // entity_type별로 그룹핑
   const grouped = new Map<string, EntityDetail[]>();

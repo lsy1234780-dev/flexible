@@ -1,7 +1,8 @@
 # 현재 DB 스키마 레퍼런스
 
 > 이 문서는 현재 운영 중인 Supabase DB의 전체 테이블 구조입니다.
-> 마이그레이션 파일: `supabase/migrations/001~029`
+> 마이그레이션 파일: `supabase/migrations/001~070`
+> (참고: 본문 상세는 주요 테이블 위주 — 030 이후 추가 테이블은 하단 마이그레이션 목록과 각 SQL 파일 참조)
 
 ---
 
@@ -396,6 +397,98 @@ access_logs (
 
 ---
 
+## Chat / 협업 (060~070)
+
+> 모든 채팅 테이블은 `workspace_id` + 표준 ws_isolation RLS. realtime은 messages·message_reactions에 켜져 있음.
+
+### channels (채널 · DM · 레코드 스레드)
+
+```sql
+channels (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES workspaces(id),
+  name text NOT NULL,
+  kind text NOT NULL DEFAULT 'channel'
+    CHECK (kind IN ('channel', 'dm', 'record')),
+    -- channel: 공개 채널 / dm: 1:1 (channel_members 2명)
+    -- record: 레코드 스레드 (수주·제품·거래처·A/S에 붙는 대화, 070)
+  is_private boolean NOT NULL DEFAULT false,
+  entity_type text,        -- kind='record'일 때 'order','product','company','as','receiving'
+  entity_id uuid,          -- 레코드 id (다형성, FK 없음)
+  entity_label text,       -- 표시용 스냅샷 (ORD-2025-0845 등)
+  created_by uuid REFERENCES auth.users(id),
+  created_at timestamptz DEFAULT now()
+)
+-- UNIQUE (workspace_id, entity_type, entity_id) WHERE kind = 'record'
+```
+
+### channel_members (멤버십 + 읽음 상태)
+
+```sql
+channel_members (
+  channel_id uuid REFERENCES channels(id),
+  user_id uuid REFERENCES auth.users(id),
+  workspace_id uuid NOT NULL,
+  last_read_at timestamptz,       -- 안읽음 계산 기준
+  PRIMARY KEY (channel_id, user_id)
+)
+```
+
+### messages (메시지)
+
+```sql
+messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  channel_id uuid REFERENCES channels(id),
+  author_id uuid REFERENCES auth.users(id),
+  author_name text,               -- 표시용 비정규화
+  body text NOT NULL,
+  is_system boolean NOT NULL DEFAULT false,  -- ERP 봇 이벤트 (수주 확정·출고·입고 등 자동 기록, 070)
+  context_type text, context_id uuid,        -- (060 예비 컬럼 — 현재 미사용, 레코드 스레드는 kind='record' 채널 방식)
+  reply_to uuid REFERENCES messages(id),
+  edited_at timestamptz,
+  deleted_at timestamptz,         -- soft delete
+  created_at timestamptz DEFAULT now()
+)
+```
+
+### message_mentions / message_reactions / message_attachments
+
+```sql
+message_mentions (   -- 엔티티 멘션 (양방향 링크의 심장, 다형성)
+  id uuid PRIMARY KEY,
+  workspace_id uuid NOT NULL,
+  message_id uuid REFERENCES messages(id),
+  entity_type text NOT NULL,      -- 'user','company','order','product','quotation','as','deal'...
+  entity_id uuid NOT NULL,
+  label text NOT NULL             -- 멘션 시점 표시 스냅샷
+)
+
+message_reactions (  -- 이모지 반응
+  message_id uuid, user_id uuid, emoji text,
+  UNIQUE (message_id, user_id, emoji)
+)
+
+message_attachments ( -- 파일 첨부 (Storage: chat-attachments 버킷)
+  message_id uuid, storage_path text, file_name text, mime_type text, size_bytes bigint
+)
+```
+
+### 채팅 RPC
+
+| 함수 | 역할 |
+|------|------|
+| `get_my_channels()` | 공개 채널 + 내 DM 목록 (record 스레드 제외) + 안읽음 수 |
+| `get_or_create_dm(p_other)` | 1:1 DM 찾기/생성 (멱등) |
+| `get_or_create_record_channel(p_ws, p_type, p_id, p_label)` | 레코드 스레드 채널 찾기/생성 (멱등, 070) |
+| `mark_channel_read(p_channel)` | 읽음 처리 (last_read_at) |
+| `get_my_mentions(p_limit)` | 나를 멘션한 메시지 + 안읽음 + 레코드 정보 (070에서 확장) |
+| `get_record_activity(p_limit)` | 레코드 스레드 최근 활동 (인박스 피드, 070) |
+| `seed_default_channels(p_ws)` | #general 시드 |
+
+---
+
 ## 마이그레이션 파일 목록
 
 | # | 파일 | 내용 |
@@ -440,5 +533,35 @@ access_logs (
 | 038 | unit_barcode_nullable | unit_barcode nullable + RPC p_generate_unit_barcode |
 | 039 | inventory_items_rename | product_serials → inventory_items 리네임, location/receiving 상태 추가 |
 | 040 | inventory_movements | 재고 이동 이력 테이블 |
+| 041 | generate_inventory_items_optional_receiving | 재고 아이템 생성 RPC 보완 |
+| 042 | system_settings | 시스템 설정 테이블 |
+| 043 | inventory_items_cascade_delete | 재고 아이템 CASCADE |
+| 044 | inbound_shipments | 수입 선적 (B/L, 컨테이너) |
+| 045 | purchase_orders | 구매 발주 (사입) |
+| 046 | companies_boolean_flags | 업체 플래그 |
+| 047 | companies_country | 업체 국가 |
+| 048 | warehouses | 창고 |
+| 049 | warehouse_inventory | 창고별 재고 |
+| 050 | profit_loss | 손익 |
+| 051 | pl_statements | 손익계산서 |
+| 052 | workspaces | 워크스페이스 (멀티테넌시) |
+| 053 | workspace_id_rollout | 전 테이블 workspace_id 롤아웃 |
+| 054 | rls_tenant_isolation | 테넌트 격리 RLS |
+| 055 | workspace_id_not_null | workspace_id NOT NULL |
+| 056 | rpc_workspace_id | RPC 워크스페이스 스코핑 |
+| 057 | crm_generalize | CRM 일반화 |
+| 058 | crm_pipeline | 영업 파이프라인 (deals, deal_stages) |
+| 059 | create_workspace_rpc | 워크스페이스 생성 RPC |
+| 060 | chat_core | 채팅 코어 (channels, messages, message_mentions) |
+| 061 | chat_reactions_read | 이모지 반응 + 읽음 처리 |
+| 062 | chat_dm_members | DM + 워크스페이스 멤버 RPC |
+| 063 | chat_dm_rls_hardening | DM RLS 강화 |
+| 064 | set_workspace_module | 모듈 토글 RPC |
+| 065 | auth_user_helpers | auth 유저 헬퍼 |
+| 066 | my_mentions | 내 멘션 알림 RPC |
+| 067 | chat_attachments | 채팅 파일 첨부 |
+| 068 | workspace_members_department | 멤버 부서 |
+| 069 | logistics_module | 물류 모듈 게이팅 |
+| 070 | record_threads | 레코드 스레드 + ERP 봇 시스템 메시지 + 인박스 RPC |
 
-**다음 마이그레이션:** `041_xxx.sql`
+**다음 마이그레이션:** `071_xxx.sql`

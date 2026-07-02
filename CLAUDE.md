@@ -190,8 +190,16 @@ company_products 레코드 있음?
 | `/quotations` | 견적서 CRUD, PDF, 이메일 발송 | ✅ |
 | `/orders` | 수주 관리, 견적 연동, 재고 차감 | ✅ |
 | `/as` | A/S 요청 접수, 점검, 수리 이력 | ✅ |
-| `/settings` | RBAC 설정 (부서/직급/그룹/메뉴) | ✅ |
-| `/dashboard` | 실시간 현황 대시보드 | 예정 |
+| `/settings` | RBAC 설정 (부서/직급/그룹/메뉴/모듈) | ✅ |
+| `/dashboard` | 현황 대시보드 | ✅ |
+| `/inbox` | 통합 인박스 (멘션·레코드 대화·긴급 피드, 로그인 후 첫 화면) | ✅ |
+| `/chat` | 팀 채팅 (채널/DM, 엔티티 멘션, 위젯) | ✅ |
+| `/deals` | 영업 파이프라인 | ✅ |
+| `/warehouses` | 창고 관리 | ✅ |
+| `/receiving-orders` | 입고 작업 | ✅ |
+| `/lots` | LOT 관리 | ✅ |
+| `/warranty` | 출고현황 | ✅ |
+| `/profit-loss` | 손익계산서 | ✅ |
 
 ### apps/b2b-portal
 
@@ -503,13 +511,14 @@ feat(admin): 입고지시서 UI 페이지 구현
 | B2B | 업체 포털 (카탈로그, 발주, 견적) | `apps/b2b-portal` |
 | 물류 | 출고 관리, 입고 확인 (PWA) | `apps/logistics` |
 | 권한 | 부서/직급 RBAC, 그룹 롤, 메뉴 접근 설정 | `/settings` |
+| 협업 | 팀 채팅(채널/DM/위젯/엔티티 멘션), 레코드 스레드(수주·제품·거래처·A/S 상세에 대화 부착), ERP 봇 이벤트, 통합 인박스 | `/chat`, `/inbox`, 각 상세 페이지 |
 
 ### DB 마이그레이션 파일
 
 `supabase/migrations/` 디렉토리에 순번대로 존재. 새 마이그레이션은 다음 번호로 작성:
 ```
-현재 마지막: 040_inventory_movements.sql
-다음 작성 시: 041_xxx.sql
+현재 마지막: 070_record_threads.sql
+다음 작성 시: 071_xxx.sql
 ```
 
 ---

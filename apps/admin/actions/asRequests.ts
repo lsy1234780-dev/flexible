@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
+import { postRecordEvent } from '@/actions/chat';
 import { AS_STATUS_LABEL } from '@/lib/asConstants';
 import type { AsStatus } from '@/lib/asConstants';
 
@@ -181,6 +182,11 @@ export async function updateAsStatus(
     workspace_id: await getCurrentWorkspaceId(),
   });
 
+  // 레코드 스레드에 이벤트 기록 (ERP 봇)
+  const { data: asReq } = await supabase.from('as_requests').select('number').eq('id', id).single();
+  await postRecordEvent('as', id, asReq?.number ?? 'A/S',
+    `${createdByName || '관리자'} 님이 상태를 '${AS_STATUS_LABEL[status]}'(으)로 변경했습니다${content ? ` · ${content}` : ''}`);
+
   revalidatePath('/as');
   revalidatePath(`/as/${id}`);
   return {};
@@ -272,6 +278,11 @@ export async function completeInspection(
     created_by_name: inspectorName || '검수자',
     workspace_id: await getCurrentWorkspaceId(),
   });
+
+  // 레코드 스레드에 이벤트 기록 (ERP 봇)
+  const { data: asReq } = await supabase.from('as_requests').select('number').eq('id', id).single();
+  await postRecordEvent('as', id, asReq?.number ?? 'A/S',
+    `${inspectorName || '검수자'} 님이 검수를 완료했습니다 → 수리 시작 · 고장 부위: ${defectiveParts.length > 0 ? defectiveParts.join(', ') : '미선택'}`);
 
   revalidatePath('/as');
   revalidatePath(`/as/${id}`);

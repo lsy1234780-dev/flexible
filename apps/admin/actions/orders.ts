@@ -4,7 +4,8 @@ import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 import { sendAlert } from '@/lib/email';
-import type { OrderStatus } from '@/types/database';
+import { postRecordEvent } from '@/actions/chat';
+import { getCurrentUser } from '@/actions/auth';
 
 const B2B_PORTAL_URL = process.env.NEXT_PUBLIC_B2B_PORTAL_URL ?? 'http://localhost:3002';
 const BRAND_NAME = process.env.EMAIL_BRAND_NAME ?? 'B2B 협력사 포털';
@@ -125,6 +126,10 @@ export async function confirmOrder(id: string) {
 
   await logCrm(supabase, order.company_id, id, '발주 확정', '재고 차감 완료');
 
+  // 레코드 스레드에 이벤트 기록 (ERP 봇)
+  const actor = (await getCurrentUser())?.name ?? confirmedBy ?? '시스템';
+  await postRecordEvent('order', id, orderSlug, `${actor} 님이 발주를 확정했습니다 · 재고 차감 완료`);
+
   // 미발송 견적서가 있으면 자동 발송 처리 (draft → sent)
   const { data: quotation } = await supabase
     .from('quotations')
@@ -201,6 +206,8 @@ export async function shipOrder(
   if (error) return { error: error.message };
 
   await logCrm(supabase, order.company_id, id, '출고 지시');
+  await postRecordEvent('order', id, orderSlug,
+    `${(await getCurrentUser())?.name ?? '시스템'} 님이 출고를 지시했습니다 · 시리얼 ${level}`);
 
   revalidatePath('/orders');
   revalidatePath(`/orders/${orderSlug}`);
@@ -234,6 +241,7 @@ export async function packOrder(id: string) {
   if (error) return { error: error.message };
 
   await logCrm(supabase, order.company_id, id, '집하 완료');
+  await postRecordEvent('order', id, orderSlug, '집하가 완료되었습니다 (물류 스캔)');
 
   revalidatePath('/orders');
   revalidatePath(`/orders/${orderSlug}`);
@@ -266,6 +274,7 @@ export async function completeOrder(id: string) {
   if (error) return { error: error.message };
 
   await logCrm(supabase, order.company_id, id, '출하 완료');
+  await postRecordEvent('order', id, orderSlug, '출하가 완료되었습니다');
 
   revalidatePath('/orders');
   revalidatePath(`/orders/${orderSlug}`);
@@ -363,6 +372,8 @@ export async function cancelOrder(id: string) {
     '발주 취소',
     wasConfirmed ? '재고 복원 완료' : undefined,
   );
+  await postRecordEvent('order', id, orderSlug,
+    `${(await getCurrentUser())?.name ?? '시스템'} 님이 발주를 취소했습니다${wasConfirmed ? ' · 재고 복원 완료' : ''}`);
 
   revalidatePath('/orders');
   revalidatePath(`/orders/${orderSlug}`);

@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
+import { postRecordEvent } from '@/actions/chat';
 import dayjs from 'dayjs';
 
 // ── 입고지시서 목록 조회 ──
@@ -69,6 +70,11 @@ export async function createReceivingOrder(
     .insert(insertItems);
 
   if (itemsErr) return { error: itemsErr.message };
+
+  // 레코드 스레드에 이벤트 기록 (ERP 봇)
+  const totalQty = items.reduce((s, i) => s + i.expected_quantity, 0);
+  await postRecordEvent('receiving', order.id, title.trim(),
+    `입고지시서가 생성되었습니다 · ${items.length}개 품목 ${totalQty}개`);
 
   revalidatePath('/receiving');
   return { success: true, id: order.id };
@@ -426,6 +432,18 @@ export async function confirmReceivingOrder(
     .eq('id', orderId);
 
   if (error) return { error: error.message };
+
+  // 레코드 스레드에 이벤트 기록 (ERP 봇) — 입고된 제품 각각의 스레드에도 기록
+  await postRecordEvent('receiving', orderId, order.title,
+    `입고가 확정되었습니다 · ${totalReceived}/${totalExpected}개${allFulfilled ? '' : ' (부분 입고)'}`);
+  for (const ci of confirmItems) {
+    const item = items.find((i) => i.id === ci.receiving_item_id);
+    if (!item || item.received_quantity <= 0) continue;
+    const { data: product } = await supabase
+      .from('products').select('name').eq('id', ci.product_id).single();
+    await postRecordEvent('product', ci.product_id, product?.name ?? '제품',
+      `입고 확정 · ${item.received_quantity}개 (${order.title})`);
+  }
 
   revalidatePath('/receiving');
   return {

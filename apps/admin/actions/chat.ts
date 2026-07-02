@@ -93,12 +93,16 @@ export interface MyMention {
   body: string;
   created_at: string;
   is_unread: boolean;
+  // 레코드 스레드에서 멘션된 경우 — 인박스에서 레코드로 딥링크 (070)
+  entity_type: string | null;
+  entity_id: string | null;
+  entity_label: string | null;
 }
 
-export async function getMyMentions(): Promise<MyMention[]> {
+export async function getMyMentions(limit = 20): Promise<MyMention[]> {
   if (process.env.PREVIEW_MODE === 'true') return [];
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc('get_my_mentions', { p_limit: 20 });
+  const { data, error } = await supabase.rpc('get_my_mentions', { p_limit: limit });
   if (error) throw new Error(error.message);
   return (data ?? []) as MyMention[];
 }
@@ -172,13 +176,117 @@ export async function getMessages(channelId: string, limit = 100) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('messages')
-    .select('id, author_id, author_name, body, created_at, edited_at, reply_to, message_mentions(entity_type, entity_id, label), message_reactions(emoji, user_id), message_attachments(id, storage_path, file_name, mime_type, size_bytes)')
+    .select('id, author_id, author_name, body, is_system, created_at, edited_at, reply_to, message_mentions(entity_type, entity_id, label), message_reactions(emoji, user_id), message_attachments(id, storage_path, file_name, mime_type, size_bytes)')
     .eq('channel_id', channelId)
     .is('deleted_at', null)
     .order('created_at', { ascending: true })
     .limit(limit);
   if (error) throw new Error(error.message);
   return data;
+}
+
+// ─── 레코드 스레드 (F안 핵심) ───
+// 레코드(수주·제품·거래처·A/S)에 직접 붙는 대화. 채널은 첫 메시지 시점에 지연 생성(070).
+
+export interface RecordThreadData {
+  channelId: string | null;   // null = 아직 대화 없음 (채널 미생성)
+  messages: Awaited<ReturnType<typeof getMessages>>;
+}
+
+export async function getRecordThread(entityType: string, entityId: string): Promise<RecordThreadData> {
+  if (process.env.PREVIEW_MODE === 'true') return { channelId: null, messages: [] };
+  const supabase = await createClient();
+  const { data: channel } = await supabase
+    .from('channels')
+    .select('id')
+    .eq('kind', 'record')
+    .eq('entity_type', entityType)
+    .eq('entity_id', entityId)
+    .maybeSingle();
+  if (!channel) return { channelId: null, messages: [] };
+  return { channelId: channel.id, messages: await getMessages(channel.id) };
+}
+
+// 레코드 스레드에 메시지 전송 — 채널이 없으면 만들고 보낸다.
+export async function sendRecordMessage(
+  entityType: string,
+  entityId: string,
+  entityLabel: string,
+  body: string,
+  mentions: MentionInput[] = [],
+  attachments: AttachmentInput[] = [],
+) {
+  const supabase = await createClient();
+  const workspaceId = await getCurrentWorkspaceId();
+  const { data: channelId, error } = await supabase.rpc('get_or_create_record_channel', {
+    p_ws: workspaceId,
+    p_type: entityType,
+    p_id: entityId,
+    p_label: entityLabel,
+  });
+  if (error || !channelId) return { error: error?.message ?? '스레드 생성 실패' };
+  const res = await sendMessage(channelId as string, body, mentions, null, attachments);
+  if (res?.error) return { error: res.error };
+  return { success: true, channelId: channelId as string };
+}
+
+// ERP 이벤트 → 레코드 스레드에 시스템 메시지 게시 (ERP 봇).
+// 상태 전이 액션(수주 확정·출고·취소, 입고 등)이 호출한다.
+// 이벤트 게시 실패가 본 작업을 막으면 안 되므로 절대 throw하지 않는다.
+export async function postRecordEvent(
+  entityType: string,
+  entityId: string,
+  entityLabel: string,
+  body: string,
+) {
+  try {
+    const enabled = await getEnabledModules();
+    if (!enabled.includes('chat')) return; // chat 모듈 꺼진 워크스페이스는 조용히 스킵
+
+    const supabase = await createClient();
+    const workspaceId = await getCurrentWorkspaceId();
+    const { data: channelId, error } = await supabase.rpc('get_or_create_record_channel', {
+      p_ws: workspaceId,
+      p_type: entityType,
+      p_id: entityId,
+      p_label: entityLabel,
+    });
+    if (error || !channelId) return;
+
+    const me = await getCurrentUser();
+    await supabase.from('messages').insert({
+      workspace_id: workspaceId,
+      channel_id: channelId as string,
+      author_id: me?.id ?? null,
+      author_name: me?.name ?? '시스템',
+      body,
+      is_system: true,
+    });
+  } catch {
+    // 이벤트 기록은 부가 기능 — 실패해도 무시
+  }
+}
+
+// 레코드 스레드 최근 활동 (인박스 피드)
+export interface RecordActivity {
+  message_id: string;
+  channel_id: string;
+  author_name: string | null;
+  body: string;
+  is_system: boolean;
+  created_at: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  entity_label: string | null;
+  is_unread: boolean;
+}
+
+export async function getRecordActivity(limit = 20): Promise<RecordActivity[]> {
+  if (process.env.PREVIEW_MODE === 'true') return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('get_record_activity', { p_limit: limit });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as RecordActivity[];
 }
 
 export interface AttachmentInput {
@@ -464,12 +572,15 @@ export async function getChatEntityDetails(
           info: `${statusLabel[row.status] ?? row.status}${totalStr}`, href: href(row.id), chip });
       }
     } else if (type === 'quotation') {
+      // 주의: quotations 실제 컬럼은 number/status/issued_at (quote_number/total_amount 아님)
       const { data } = await supabase
-        .from('quotations').select('id, quote_number, status, total_amount').in('id', ids);
-      const statusLabel: Record<string, string> = { draft: '초안', sent: '발송완료', accepted: '수락', rejected: '거절' };
+        .from('quotations').select('id, number, status, quotation_items(unit_price, quantity)').in('id', ids);
+      const statusLabel: Record<string, string> = { draft: '초안', sent: '발송완료', confirmed: '확정' };
       for (const row of data ?? []) {
-        const totalStr = row.total_amount ? ` · ₩${Number(row.total_amount).toLocaleString()}` : '';
-        results.push({ entity_type: type, entity_id: row.id, label: row.quote_number ?? '견적',
+        const total = ((row.quotation_items ?? []) as { unit_price: number; quantity: number }[])
+          .reduce((s, i) => s + i.unit_price * i.quantity, 0);
+        const totalStr = total > 0 ? ` · ₩${total.toLocaleString()}` : '';
+        results.push({ entity_type: type, entity_id: row.id, label: row.number ?? '견적',
           info: `${statusLabel[row.status] ?? row.status}${totalStr}`, href: href(row.id), chip });
       }
     } else if (type === 'product') {
@@ -480,19 +591,20 @@ export async function getChatEntityDetails(
           info: `재고 ${row.base_stock ?? 0}개`, href: href(row.id), chip });
       }
     } else if (type === 'as') {
+      // 주의: as_requests 실제 컬럼은 number (request_number 아님)
       const { data } = await supabase
-        .from('as_requests').select('id, request_number, status').in('id', ids);
+        .from('as_requests').select('id, number, status').in('id', ids);
       const statusLabel: Record<string, string> = { received: '접수', inspecting: '점검중', repairing: '수리중', completed: '완료' };
       for (const row of data ?? []) {
         results.push({ entity_type: type, entity_id: row.id,
-          label: row.request_number ?? 'A/S',
+          label: row.number ?? 'A/S',
           info: statusLabel[row.status] ?? row.status, href: href(row.id), chip });
       }
     } else if (type === 'deal') {
       const { data } = await supabase
         .from('deals').select('id, title, deal_stages(name)').in('id', ids);
       for (const row of data ?? []) {
-        const stage = (row.deal_stages as { name: string } | null)?.name ?? '-';
+        const stage = (row.deal_stages as unknown as { name: string } | null)?.name ?? '-';
         results.push({ entity_type: type, entity_id: row.id, label: row.title,
           info: stage, href: href(row.id), chip });
       }

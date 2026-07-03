@@ -703,5 +703,6 @@ leave_balances (    -- 부여량은 관리자 입력. used는 저장 안 함(승
 | 079 | approvals_one_pending | 한 레코드당 pending 승인 요청 1건 제한 (partial unique index) |
 | 080 | attendance_core | 근태 코어: attendance_managers(명시적 권한 부여)/policy/records/holidays + is_attendance_manager |
 | 081 | attendance_leaves | 휴가: leave_types(시드)/requests/balances + approvals 동기화·가드 트리거 |
+| 082 | attendance_fn_hardening | 근태 트리거 함수 EXECUTE 회수 + search_path 고정 (어드바이저 반영) |
 
-**다음 마이그레이션:** `082_xxx.sql`
+**다음 마이그레이션:** `083_xxx.sql`

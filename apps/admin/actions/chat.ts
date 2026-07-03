@@ -158,7 +158,11 @@ export async function createChannel(name: string) {
   if (!clean) return { error: '채널 이름을 입력하세요' };
   const supabase = await createClient();
   const workspaceId = await getCurrentWorkspaceId();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: claimsData } = await supabase.auth.getClaims();
+
+  // getUser() 대신 getClaims(): 로컬 서명 검증(네트워크 왕복 없음). RBAC 프레시니스가 필요없는 단순 인증 확인 자리.
+
+  const user = claimsData?.claims ? { id: claimsData.claims.sub, email: claimsData.claims.email, user_metadata: claimsData.claims.user_metadata, app_metadata: claimsData.claims.app_metadata } : null;
 
   const { data, error } = await supabase
     .from('channels')
@@ -307,7 +311,11 @@ export async function sendMessage(
   if (!text && mentions.length === 0 && attachments.length === 0) return { error: '메시지를 입력하세요' };
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: claimsData } = await supabase.auth.getClaims();
+
+  // getUser() 대신 getClaims(): 로컬 서명 검증(네트워크 왕복 없음). RBAC 프레시니스가 필요없는 단순 인증 확인 자리.
+
+  const user = claimsData?.claims ? { id: claimsData.claims.sub, email: claimsData.claims.email, user_metadata: claimsData.claims.user_metadata, app_metadata: claimsData.claims.app_metadata } : null;
   if (!user) return { error: '로그인이 필요합니다' };
 
   const workspaceId = await getCurrentWorkspaceId();
@@ -328,7 +336,9 @@ export async function sendMessage(
   if (error || !msg) return { error: error?.message ?? '전송 실패' };
 
   if (mentions.length > 0) {
-    const { error: mErr } = await supabase.from('message_mentions').insert(
+    // upsert + ignoreDuplicates: 답글이면 075 트리거가 부모 멘션을 이미 상속해뒀을 수 있어
+    // 같은 (message_id, entity_type, entity_id)를 다시 넣으면 충돌한다 — 조용히 무시하고 통과.
+    const { error: mErr } = await supabase.from('message_mentions').upsert(
       mentions.map((m) => ({
         workspace_id: workspaceId,
         message_id: msg.id,
@@ -336,6 +346,7 @@ export async function sendMessage(
         entity_id: m.entity_id,
         label: m.label,
       })),
+      { onConflict: 'message_id,entity_type,entity_id', ignoreDuplicates: true },
     );
     if (mErr) return { error: mErr.message };
   }
@@ -390,7 +401,13 @@ export async function uploadChatFile(formData: FormData) {
 
   const supabase = await createClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: claimsData } = await supabase.auth.getClaims();
+
+
+  // getUser() 대신 getClaims(): 로컬 서명 검증(네트워크 왕복 없음). RBAC 프레시니스가 필요없는 단순 인증 확인 자리.
+
+
+  const user = claimsData?.claims ? { id: claimsData.claims.sub, email: claimsData.claims.email, user_metadata: claimsData.claims.user_metadata, app_metadata: claimsData.claims.app_metadata } : null;
   if (!user) return { error: '로그인이 필요합니다' };
 
   const workspaceId = await getCurrentWorkspaceId();

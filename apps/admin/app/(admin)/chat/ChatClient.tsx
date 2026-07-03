@@ -324,32 +324,41 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
         />
       )}
 
-      {/* 스레드 패널 */}
-      {threadMsg && (
-        <aside className="w-96 flex-shrink-0 border-l flex flex-col bg-white">
-          <div className="flex items-center justify-between px-4 h-12 border-b">
-            <span className="text-sm font-semibold text-gray-700">스레드</span>
-            <button onClick={() => setThreadParent(null)} className="p-1 text-gray-400 hover:text-gray-700">
-              <X size={16} />
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-            <MessageItem m={threadMsg} meId={meId} meName={meName} onReact={handleReact} onEdit={handleEdit} onDelete={handleDelete} onJump={jump} />
-            {threadReplies.length > 0 && (
-              <div className="flex items-center gap-2 text-[11px] text-gray-400">
-                <span>{threadReplies.length}개 답글</span>
-                <div className="h-px flex-1 bg-gray-100" />
-              </div>
-            )}
-            {threadReplies.map((r) => (
-              <div key={r.id} className="pl-3 border-l-2 border-gray-100">
-                <MessageItem m={r} meId={meId} meName={meName} onReact={handleReact} onEdit={handleEdit} onDelete={handleDelete} onJump={jump} />
-              </div>
-            ))}
-          </div>
-          <Composer channelId={activeId!} placeholder="답글 남기기…" onSend={(body, mentions, attachments) => handleSend(body, mentions, attachments, threadMsg.id)} />
-        </aside>
-      )}
+      {/* 스레드 패널 — 폭 0↔384px 트랜지션으로 슬라이드 열림/닫힘 (사이드바/본문은 그대로 고정) */}
+      <aside
+        className={cn(
+          'flex-shrink-0 overflow-hidden bg-white flex flex-col transition-[width] duration-200 ease-out',
+          threadMsg ? 'w-96 border-l' : 'w-0 border-l-0',
+        )}
+      >
+        {threadMsg && (
+          <>
+            <div className="flex w-96 items-center justify-between px-4 h-12 border-b flex-shrink-0">
+              <span className="text-sm font-semibold text-gray-700">스레드</span>
+              <button onClick={() => setThreadParent(null)} className="p-1 text-gray-400 hover:text-gray-700">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="w-96 flex-1 overflow-y-auto px-4 py-3 space-y-3">
+              <MessageItem m={threadMsg} meId={meId} meName={meName} onReact={handleReact} onEdit={handleEdit} onDelete={handleDelete} onJump={jump} />
+              {threadReplies.length > 0 && (
+                <div className="flex items-center gap-2 text-[11px] text-gray-400">
+                  <span>{threadReplies.length}개 답글</span>
+                  <div className="h-px flex-1 bg-gray-100" />
+                </div>
+              )}
+              {threadReplies.map((r) => (
+                <div key={r.id} className="pl-3 border-l-2 border-gray-100">
+                  <MessageItem m={r} meId={meId} meName={meName} onReact={handleReact} onEdit={handleEdit} onDelete={handleDelete} onJump={jump} />
+                </div>
+              ))}
+            </div>
+            <div className="w-96 flex-shrink-0">
+              <Composer channelId={activeId!} placeholder="답글 남기기…" onSend={(body, mentions, attachments) => handleSend(body, mentions, attachments, threadMsg.id)} />
+            </div>
+          </>
+        )}
+      </aside>
     </div>
   );
 }

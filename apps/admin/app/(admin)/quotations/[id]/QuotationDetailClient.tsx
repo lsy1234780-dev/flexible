@@ -13,6 +13,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DataTable } from '@/components/ui/data-table';
 import { updateQuotationStatus, updateQuotationItems, sendQuotationEmail } from '@/actions/quotations';
+import RecordThread from '@/components/RecordThread';
+import ShareToChat from '@/components/ShareToChat';
 import dayjs from 'dayjs';
 
 type QuotationStatus = 'draft' | 'sent' | 'confirmed';
@@ -718,7 +720,8 @@ export default function QuotationDetailClient({ quotation, products }: Props) {
             {statusLabel[quotation.status]}
           </Badge>
         </div>
-        <div className="pl-10 sm:pl-0 sm:ml-auto shrink-0">
+        <div className="pl-10 sm:pl-0 sm:ml-auto shrink-0 flex items-center gap-1.5">
+          <ShareToChat entityType="quotation" entityId={quotation.id} label={quotation.number} />
           <Select
             value={quotation.status}
             onValueChange={(v) => handleStatusChange(v as QuotationStatus)}
@@ -892,6 +895,13 @@ export default function QuotationDetailClient({ quotation, products }: Props) {
           <div className="flex justify-between text-base font-bold pt-1 border-t">
             <span>합계</span><span>₩{(subtotal + tax).toLocaleString()}</span>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* 레코드 스레드 — 이 견적서에 붙는 대화 + 역링크 */}
+      <Card>
+        <CardContent className="py-4">
+          <RecordThread entityType="quotation" entityId={quotation.id} entityLabel={quotation.number} />
         </CardContent>
       </Card>
 

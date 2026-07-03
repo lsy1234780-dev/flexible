@@ -62,7 +62,7 @@ export const ENTITY_REGISTRY: EntityDef[] = [
   {
     type: 'quotation', label: '견적', module: 'quotations',
     source: { table: 'quotations', labelColumns: ['number'], searchColumns: ['number'], orderColumn: 'issued_at' },
-    href: () => '/quotations',
+    href: (id) => `/quotations/${id}`,
     chip: 'bg-orange-50 text-orange-700 hover:bg-orange-100 border-orange-200',
   },
   {
@@ -80,14 +80,24 @@ export const ENTITY_REGISTRY: EntityDef[] = [
   {
     type: 'warehouse', label: '창고', module: 'logistics',
     source: { table: 'warehouses', labelColumns: ['name'], searchColumns: ['name'], orderColumn: 'created_at' },
-    href: () => '/warehouses',
+    href: (id) => `/warehouses/${id}`,
     chip: 'bg-cyan-50 text-cyan-700 hover:bg-cyan-100 border-cyan-200',
   },
   {
+    // 주의: table은 receiving_orders지만 상세 라우트는 /receiving-orders/[id] — /receiving/[id]는
+    // 이름이 비슷해 헷갈리지만 실제로는 구매발주(purchase_orders) 상세 페이지라 다른 엔티티다.
     type: 'receiving', label: '입고', module: 'receiving',
     source: { table: 'receiving_orders', labelColumns: ['title'], searchColumns: ['title'], orderColumn: 'created_at' },
-    href: () => '/receiving',
+    href: (id) => `/receiving-orders/${id}`,
     chip: 'bg-lime-50 text-lime-700 hover:bg-lime-100 border-lime-200',
+  },
+  {
+    // 상세 라우트는 /receiving/[id] — 위 receiving(입고, receiving_orders) 엔티티와 이름이
+    // 헷갈리지만 서로 다른 테이블/페이지다.
+    type: 'purchase_order', label: '구매발주', module: 'receiving',
+    source: { table: 'purchase_orders', labelColumns: ['title'], searchColumns: ['title', 'po_number'], orderColumn: 'created_at' },
+    href: (id) => `/receiving/${id}`,
+    chip: 'bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-100 border-fuchsia-200',
   },
   {
     type: 'as', label: 'A/S', module: 'service',

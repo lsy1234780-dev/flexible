@@ -22,6 +22,8 @@ import {
   getInventoryAtLocation, getWarehouseInventory, upsertWarehouseInventory,
 } from '@/actions/warehouses';
 import { getProductsForReceiving } from '@/actions/receiving';
+import RecordThread from '@/components/RecordThread';
+import ShareToChat from '@/components/ShareToChat';
 import { getChildType, getLocationTypeLabel } from '@/lib/warehouseUtils';
 import { cn } from '@/lib/utils';
 import type { Warehouse, WarehouseLocation } from '@/types/database';
@@ -194,6 +196,7 @@ export default function WarehouseDetailClient({ warehouse, initialLocationTree }
             <p className="text-sm text-muted-foreground mt-0.5">{warehouse.address}</p>
           )}
         </div>
+        <ShareToChat entityType="warehouse" entityId={warehouse.id} label={warehouse.name} className="shrink-0" />
       </div>
 
       {/* 창고 정보 요약 */}
@@ -271,6 +274,13 @@ export default function WarehouseDetailClient({ warehouse, initialLocationTree }
         locationName={selectedLocationId ? findLocationName(tree, selectedLocationId) : undefined}
         onClearLocation={() => setSelectedLocationId(null)}
       />
+
+      {/* 레코드 스레드 — 이 창고에 붙는 대화 + 역링크 */}
+      <Card>
+        <CardContent className="pt-4 pb-4">
+          <RecordThread entityType="warehouse" entityId={warehouse.id} entityLabel={warehouse.name} />
+        </CardContent>
+      </Card>
 
       {/* 로케이션 생성/수정 다이얼로그 */}
       <Dialog open={showLocDialog} onOpenChange={setShowLocDialog}>

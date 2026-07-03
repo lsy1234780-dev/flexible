@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { deleteReceivingOrder, receiveItems } from '@/actions/receiving';
+import RecordThread from '@/components/RecordThread';
+import ShareToChat from '@/components/ShareToChat';
 import ReceivingConfirmPanel from '../../receiving/ReceivingConfirmPanel';
 import dayjs from 'dayjs';
 
@@ -139,6 +141,11 @@ export default function ReceivingOrderDetailClient({ order }: Props) {
           </p>
         </div>
         <div className="flex gap-1.5 shrink-0">
+          <ShareToChat
+            entityType="receiving"
+            entityId={order.id}
+            label={order.title ?? `${dayjs(order.created_at).format('MM.DD')} 입고`}
+          />
           {order.status === 'awaiting_confirmation' && (
             <Button size="sm" onClick={() => setConfirmOrderId(order.id)}>
               확정
@@ -268,6 +275,17 @@ export default function ReceivingOrderDetailClient({ order }: Props) {
               </tbody>
             </table>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* 레코드 스레드 — 이 입고지시서에 붙는 대화 + 역링크 */}
+      <Card>
+        <CardContent className="py-4">
+          <RecordThread
+            entityType="receiving"
+            entityId={order.id}
+            entityLabel={order.title ?? `${dayjs(order.created_at).format('MM.DD')} 입고`}
+          />
         </CardContent>
       </Card>
 

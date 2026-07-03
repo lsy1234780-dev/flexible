@@ -14,6 +14,17 @@ import { entityHref, entityChipClass, ENTITY_LABEL } from '@/lib/entityLink';
 import type { MyMention, RecordActivity } from '@/actions/chat';
 import type { UrgentItem } from '@/actions/dashboard';
 
+// 사람 이름 → 항상 같은 색 아바타 (순수 표시용 — 데이터/구조는 안 건드림)
+const AVATAR_COLORS = [
+  'bg-indigo-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500',
+  'bg-sky-500', 'bg-violet-500', 'bg-teal-500', 'bg-orange-500',
+];
+function avatarColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
 type Tab = 'all' | 'mentions' | 'records' | 'urgent';
 
 interface FeedItem {
@@ -120,7 +131,7 @@ export default function InboxClient({ mentions, activity, urgent, chatEnabled }:
 
   const TABS: { key: Tab; label: string; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
     { key: 'all', label: '전체', icon: Inbox },
-    { key: 'mentions', label: '@멘션', icon: AtSign },
+    { key: 'mentions', label: '멘션', icon: AtSign },
     { key: 'records', label: '레코드 대화', icon: MessagesSquare },
     { key: 'urgent', label: '긴급', icon: AlertTriangle },
   ];
@@ -142,24 +153,24 @@ export default function InboxClient({ mentions, activity, urgent, chatEnabled }:
       </div>
 
       {/* 탭 */}
-      <div className="flex gap-1 border-b pb-px overflow-x-auto">
+      <div className="flex gap-1.5 overflow-x-auto pb-0.5">
         {TABS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
             className={cn(
-              'flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors',
+              'flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-semibold transition-all',
               tab === key
-                ? 'border-gray-900 text-gray-900'
-                : 'border-transparent text-gray-400 hover:text-gray-600',
+                ? 'bg-gray-900 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
             )}
           >
             <Icon size={14} />
             {label}
             {counts[key] > 0 && (
               <span className={cn(
-                'rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums',
-                tab === key ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500',
+                'rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums',
+                tab === key ? 'bg-white/20 text-white' : 'bg-white text-gray-500',
               )}>
                 {counts[key]}
               </span>
@@ -179,40 +190,51 @@ export default function InboxClient({ mentions, activity, urgent, chatEnabled }:
           </p>
         </div>
       ) : (
-        <div className="rounded-xl border bg-white divide-y">
+        <div className="overflow-hidden rounded-xl border bg-white divide-y">
           {filtered.map((item) => (
             <button
               key={item.key}
               onClick={() => open(item)}
-              className="relative flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50"
+              className={cn(
+                'relative flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-gray-50',
+                item.unread && 'bg-blue-50/40',
+              )}
             >
               {item.unread && (
-                <span className="absolute left-1.5 top-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full bg-blue-500" />
+                <span className="absolute left-1.5 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-blue-500" />
               )}
 
-              {/* 아이콘 */}
-              <span className={cn(
-                'mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg',
-                item.kind === 'urgent' ? 'bg-red-50 text-red-500'
-                  : item.kind === 'mention' ? 'bg-violet-50 text-violet-500'
-                  : 'bg-gray-100 text-gray-400',
-              )}>
-                {item.kind === 'urgent' ? <AlertTriangle size={15} />
-                  : item.kind === 'mention' ? <AtSign size={15} />
-                  : item.isSystem ? <Bot size={15} />
-                  : <MessagesSquare size={15} />}
-              </span>
+              {/* 아이콘 — 긴급은 알림 색, 시스템은 봇, 나머지는 이름 이니셜 아바타 */}
+              {item.kind === 'urgent' ? (
+                <span className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-red-500 text-white shadow-sm">
+                  <AlertTriangle size={16} />
+                </span>
+              ) : item.isSystem ? (
+                <span className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-400">
+                  <Bot size={15} />
+                </span>
+              ) : (
+                <span className={cn(
+                  'mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold text-white',
+                  avatarColor(item.title),
+                )}>
+                  {item.title.slice(0, 1)}
+                </span>
+              )}
 
               <span className="min-w-0 flex-1">
                 <span className="flex items-baseline gap-1.5 flex-wrap">
-                  <span className={cn('text-sm', item.unread ? 'font-semibold text-gray-900' : 'font-medium text-gray-700')}>
+                  <span className={cn('text-sm', item.unread ? 'font-bold text-gray-900' : 'font-semibold text-gray-700')}>
                     {item.title}
                   </span>
+                  {item.kind === 'mention' && (
+                    <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-600">멘션</span>
+                  )}
                   {item.where && (
                     <span className="inline-flex items-center gap-1 text-[11px] text-gray-400">
                       {item.kind === 'mention' && !item.entityType && (item.where === 'DM' ? <User size={10} /> : <Hash size={10} />)}
                       {item.entityType && (
-                        <span className={cn('rounded border px-1 py-px text-[10px]', entityChipClass(item.entityType))}>
+                        <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-semibold', entityChipClass(item.entityType))}>
                           {ENTITY_LABEL[item.entityType] ?? item.entityType}
                         </span>
                       )}
@@ -233,7 +255,7 @@ export default function InboxClient({ mentions, activity, urgent, chatEnabled }:
                 </span>
               </span>
 
-              <ChevronRight size={14} className="mt-2 flex-shrink-0 text-gray-200" />
+              <ChevronRight size={14} className="mt-2.5 flex-shrink-0 text-gray-300" />
             </button>
           ))}
         </div>

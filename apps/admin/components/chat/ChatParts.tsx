@@ -7,7 +7,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
 import dayjs from 'dayjs';
 import {
-  Send, AtSign, X, SmilePlus, MessageSquare, CornerDownRight,
+  Send, AtSign, X, SmilePlus, MessageSquare,
   ChevronLeft, Pencil, Trash2, Paperclip, FileText, Download, Share2,
   ExternalLink, Loader2, Bot,
 } from 'lucide-react';
@@ -137,11 +137,6 @@ export function MessageItem({ m, meId, meName, onReact, onJump, onEdit, onDelete
           <button onClick={() => setPickerOpen((v) => !v)} className="p-1 text-gray-400 hover:text-gray-700" title="반응 추가">
             <SmilePlus size={14} />
           </button>
-          {onOpenThread && (
-            <button onClick={onOpenThread} className="p-1 text-gray-400 hover:text-gray-700" title="스레드로 답글">
-              <CornerDownRight size={14} />
-            </button>
-          )}
           {mine && onEdit && (
             <button onClick={() => { setDraft(m.body); setEditing(true); }} className="p-1 text-gray-400 hover:text-gray-700" title="수정">
               <Pencil size={13} />
@@ -236,10 +231,18 @@ export function MessageItem({ m, meId, meName, onReact, onJump, onEdit, onDelete
         </div>
       )}
 
-      {onOpenThread && replyCount > 0 && (
-        <button onClick={onOpenThread} className="mt-1 inline-flex w-fit items-center gap-1 rounded text-xs font-medium text-blue-600 hover:underline">
+      {onOpenThread && (
+        // 호버로 숨기지 않고 항상 노출 — 답글 기능은 멘션 자동 상속(075)이 걸려있는 핵심 동선이라
+        // 발견 못 해서 안 쓰는 게 최악. 답글 없을 땐 옅게, 있으면 파란색으로 존재감을 높인다.
+        <button
+          onClick={onOpenThread}
+          className={cn(
+            'mt-1 inline-flex w-fit items-center gap-1 rounded text-xs font-medium transition-colors',
+            replyCount > 0 ? 'text-blue-600 hover:underline' : 'text-gray-400 hover:text-gray-600',
+          )}
+        >
           <MessageSquare size={12} />
-          답글 {replyCount}개
+          {replyCount > 0 ? `답글 ${replyCount}개` : '답글'}
         </button>
       )}
     </div>

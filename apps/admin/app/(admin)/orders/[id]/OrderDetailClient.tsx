@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import { type ColumnDef } from '@tanstack/react-table';
 import { confirmOrder, shipOrder, completeOrder, cancelOrder, updateOrderItems, sendShipmentNotification } from '@/actions/orders';
+import ApprovalPanel from '@/components/ApprovalPanel';
 import { createQuotationFromOrder, sendQuotationEmail } from '@/actions/quotations';
 import {
   getShipmentDetail, getAvailableSerials, autoAssignSerials,
@@ -972,6 +973,16 @@ export default function OrderDetailClient({ order }: Props) {
           )}
         </div>
       </div>
+
+      {/* 승인 워크플로우 — 확정 대기중일 때만 의미 있음 */}
+      {order.status === 'pending' && (
+        <ApprovalPanel
+          entityType="order"
+          entityId={order.id}
+          entityLabel={order.order_number ?? `${order.companies?.name ?? ''} 발주`}
+          onChange={() => router.refresh()}
+        />
+      )}
 
       {/* 프로그레스바 (클릭 가능 탭) */}
       <div className="flex items-center gap-0 text-xs">

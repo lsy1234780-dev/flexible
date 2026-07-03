@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { sendAlert } from '@/lib/email';
 import { postRecordEvent } from '@/actions/chat';
 import { getCurrentUser } from '@/actions/auth';
+import { isApproved } from '@/actions/approvals';
 
 const B2B_PORTAL_URL = process.env.NEXT_PUBLIC_B2B_PORTAL_URL ?? 'http://localhost:3002';
 const BRAND_NAME = process.env.EMAIL_BRAND_NAME ?? 'B2B 협력사 포털';
@@ -94,7 +95,11 @@ async function logCrm(
 /** pending → confirmed: 재고 원자적 차감 */
 export async function confirmOrder(id: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: claimsData } = await supabase.auth.getClaims();
+
+  // getUser() 대신 getClaims(): 로컬 서명 검증(네트워크 왕복 없음). RBAC 프레시니스가 필요없는 단순 인증 확인 자리.
+
+  const user = claimsData?.claims ? { id: claimsData.claims.sub, email: claimsData.claims.email, user_metadata: claimsData.claims.user_metadata, app_metadata: claimsData.claims.app_metadata } : null;
   if (!user) return { error: '로그인이 필요합니다' };
   const confirmedBy = user.email ?? null;
 
@@ -107,6 +112,11 @@ export async function confirmOrder(id: string) {
   if (!order) return { error: '주문을 찾을 수 없습니다' };
   if (order.status !== 'pending') return { error: '대기 상태의 주문만 확정할 수 있습니다' };
   const orderSlug = order.order_number ?? id;
+
+  // 승인 워크플로우 게이트 — 지정된 승인자의 승인이 있어야 확정 가능
+  if (!(await isApproved('order', id))) {
+    return { error: '승인이 필요합니다. 담당자에게 승인 요청을 보내세요.' };
+  }
 
   // RPC로 원자적 재고 차감 + 상태 변경
   const { error } = await supabase.rpc('confirm_order_with_stock_deduction', {
@@ -340,7 +350,11 @@ export async function batchCompleteOrders(ids: string[]) {
 /** pending/confirmed → cancelled: 취소 (confirmed면 재고 복원) */
 export async function cancelOrder(id: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: claimsData } = await supabase.auth.getClaims();
+
+  // getUser() 대신 getClaims(): 로컬 서명 검증(네트워크 왕복 없음). RBAC 프레시니스가 필요없는 단순 인증 확인 자리.
+
+  const user = claimsData?.claims ? { id: claimsData.claims.sub, email: claimsData.claims.email, user_metadata: claimsData.claims.user_metadata, app_metadata: claimsData.claims.app_metadata } : null;
   if (!user) return { error: '로그인이 필요합니다' };
 
   const { data: order } = await supabase
@@ -457,7 +471,11 @@ export async function updateOrderItems(
   items: { product_id: string; quantity: number; unit_price: number }[],
 ) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: claimsData } = await supabase.auth.getClaims();
+
+  // getUser() 대신 getClaims(): 로컬 서명 검증(네트워크 왕복 없음). RBAC 프레시니스가 필요없는 단순 인증 확인 자리.
+
+  const user = claimsData?.claims ? { id: claimsData.claims.sub, email: claimsData.claims.email, user_metadata: claimsData.claims.user_metadata, app_metadata: claimsData.claims.app_metadata } : null;
   if (!user) return { error: '로그인이 필요합니다' };
 
   // 발주 상태 확인
@@ -468,6 +486,12 @@ export async function updateOrderItems(
     .single();
   if (!order) return { error: '발주를 찾을 수 없습니다' };
   if (order.status !== 'pending') return { error: '접수 상태의 발주만 수정할 수 있습니다' };
+
+  // 승인받은 뒤 내용을 바꿔치기하지 못하게 잠근다 — 승인은 '승인 시점의 내용'에 대한 것이므로,
+  // 확정 전이라도 승인이 난 발주는 수정 불가. 바꾸려면 취소 후 다시 진행한다.
+  if (await isApproved('order', orderId)) {
+    return { error: '승인된 발주는 수정할 수 없습니다. 취소 후 다시 진행하세요.' };
+  }
   const orderSlug = order.order_number ?? orderId;
 
   const workspaceId = await getCurrentWorkspaceId();

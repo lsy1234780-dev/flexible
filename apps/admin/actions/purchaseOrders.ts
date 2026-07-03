@@ -3,6 +3,9 @@
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
+import { postRecordEvent } from '@/actions/chat';
+import { getCurrentUser } from '@/actions/auth';
+import { isApproved } from '@/actions/approvals';
 
 // ── 타입 ──
 
@@ -18,6 +21,7 @@ export interface PurchaseOrder {
   exchange_rate: number | null;
   vat_amount: number | null;
   payment_status: string | null;
+  status: string;
   memo: string | null;
   created_by: string | null;
   created_at: string;
@@ -105,7 +109,7 @@ export async function getPurchaseOrders() {
     .select(`
       id, po_number, title, supplier_id, supplier, supplier_contact,
       total_amount, currency, exchange_rate, vat_amount,
-      payment_status, memo, created_by, created_at, updated_at,
+      payment_status, status, memo, created_by, created_at, updated_at,
       companies(id, name, contact_name, contact_phone),
       purchase_order_items(
         id, product_id, quantity, unit_cost, memo,
@@ -135,7 +139,7 @@ export async function getPurchaseOrderDetail(id: string) {
     .select(`
       id, po_number, title, supplier_id, supplier, supplier_contact,
       total_amount, currency, exchange_rate, vat_amount,
-      payment_status, memo, created_by, created_at, updated_at,
+      payment_status, status, memo, created_by, created_at, updated_at,
       companies(id, name, contact_name, contact_phone),
       purchase_order_items(
         id, product_id, quantity, unit_cost, memo,
@@ -154,11 +158,54 @@ export async function getPurchaseOrderDetail(id: string) {
   return data as unknown as PurchaseOrder;
 }
 
+// 발주 확정 — 승인 워크플로우 게이트. 구매발주는 수주와 달리 지금까지 확정 개념이 없었어서
+// (draft/approved 상태값 자체가 이 기능을 위해 새로 추가됨) 재고 차감 같은 부수효과는 없다.
+export async function finalizePurchaseOrder(id: string) {
+  const supabase = await createClient();
+  const me = await getCurrentUser();
+  if (!me) return { error: '로그인이 필요합니다' };
+
+  const { data: po } = await supabase
+    .from('purchase_orders')
+    .select('id, title, status')
+    .eq('id', id)
+    .single();
+  if (!po) return { error: '발주를 찾을 수 없습니다' };
+  if (po.status !== 'draft') return { error: '초안 상태의 발주만 확정할 수 있습니다' };
+
+  if (!(await isApproved('purchase_order', id))) {
+    return { error: '승인이 필요합니다. 담당자에게 승인 요청을 보내세요.' };
+  }
+
+  const { error } = await supabase.from('purchase_orders').update({ status: 'approved' }).eq('id', id);
+  if (error) return { error: error.message };
+
+  await postRecordEvent('purchase_order', id, po.title, `${me.name} 님이 발주를 확정했습니다`);
+
+  revalidatePath('/receiving');
+  revalidatePath(`/receiving/${id}`);
+  return { ok: true };
+}
+
+// 확정(approved)된 발주는 품목·금액·거래조건 수정 불가 — 승인받은 내용을 사후에 바꾸지 못하게 잠근다.
+// (결제 기록은 확정 이후 실제로 발생하는 행위라 여기서 잠그지 않는다.)
+type PoSupaClient = Awaited<ReturnType<typeof createClient>>;
+async function ensurePoEditable(supabase: PoSupaClient, poId: string): Promise<string | null> {
+  const { data } = await supabase.from('purchase_orders').select('status').eq('id', poId).maybeSingle();
+  if (!data) return '발주를 찾을 수 없습니다';
+  if (data.status === 'approved') return '확정된 발주는 수정할 수 없습니다';
+  return null;
+}
+
 // ── 생성 ──
 
 export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: claimsData } = await supabase.auth.getClaims();
+
+  // getUser() 대신 getClaims(): 로컬 서명 검증(네트워크 왕복 없음). RBAC 프레시니스가 필요없는 단순 인증 확인 자리.
+
+  const user = claimsData?.claims ? { id: claimsData.claims.sub, email: claimsData.claims.email, user_metadata: claimsData.claims.user_metadata, app_metadata: claimsData.claims.app_metadata } : null;
   if (!user) return { error: '로그인이 필요합니다' };
   const workspaceId = await getCurrentWorkspaceId();
 
@@ -205,8 +252,15 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
 
 export async function updatePurchaseOrder(id: string, input: UpdatePurchaseOrderInput | Record<string, unknown>) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: claimsData } = await supabase.auth.getClaims();
+
+  // getUser() 대신 getClaims(): 로컬 서명 검증(네트워크 왕복 없음). RBAC 프레시니스가 필요없는 단순 인증 확인 자리.
+
+  const user = claimsData?.claims ? { id: claimsData.claims.sub, email: claimsData.claims.email, user_metadata: claimsData.claims.user_metadata, app_metadata: claimsData.claims.app_metadata } : null;
   if (!user) return { error: '로그인이 필요합니다' };
+
+  const lockErr = await ensurePoEditable(supabase, id);
+  if (lockErr) return { error: lockErr };
 
   const { error } = await supabase
     .from('purchase_orders')
@@ -223,7 +277,11 @@ export async function updatePurchaseOrder(id: string, input: UpdatePurchaseOrder
 
 export async function deletePurchaseOrder(id: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: claimsData } = await supabase.auth.getClaims();
+
+  // getUser() 대신 getClaims(): 로컬 서명 검증(네트워크 왕복 없음). RBAC 프레시니스가 필요없는 단순 인증 확인 자리.
+
+  const user = claimsData?.claims ? { id: claimsData.claims.sub, email: claimsData.claims.email, user_metadata: claimsData.claims.user_metadata, app_metadata: claimsData.claims.app_metadata } : null;
   if (!user) return { error: '로그인이 필요합니다' };
 
   const { error } = await supabase
@@ -246,8 +304,15 @@ export async function addPurchaseOrderItem(
   unitCost?: number,
 ) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: claimsData } = await supabase.auth.getClaims();
+
+  // getUser() 대신 getClaims(): 로컬 서명 검증(네트워크 왕복 없음). RBAC 프레시니스가 필요없는 단순 인증 확인 자리.
+
+  const user = claimsData?.claims ? { id: claimsData.claims.sub, email: claimsData.claims.email, user_metadata: claimsData.claims.user_metadata, app_metadata: claimsData.claims.app_metadata } : null;
   if (!user) return { error: '로그인이 필요합니다' };
+
+  const lockErr = await ensurePoEditable(supabase, poId);
+  if (lockErr) return { error: lockErr };
 
   const { error } = await supabase.from('purchase_order_items').insert({
     purchase_order_id: poId,
@@ -267,8 +332,17 @@ export async function updatePurchaseOrderItem(
   data: { quantity?: number; unit_cost?: number; memo?: string },
 ) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: claimsData } = await supabase.auth.getClaims();
+
+  // getUser() 대신 getClaims(): 로컬 서명 검증(네트워크 왕복 없음). RBAC 프레시니스가 필요없는 단순 인증 확인 자리.
+
+  const user = claimsData?.claims ? { id: claimsData.claims.sub, email: claimsData.claims.email, user_metadata: claimsData.claims.user_metadata, app_metadata: claimsData.claims.app_metadata } : null;
   if (!user) return { error: '로그인이 필요합니다' };
+
+  const { data: item } = await supabase.from('purchase_order_items').select('purchase_order_id').eq('id', itemId).maybeSingle();
+  if (!item) return { error: '품목을 찾을 수 없습니다' };
+  const lockErr = await ensurePoEditable(supabase, item.purchase_order_id);
+  if (lockErr) return { error: lockErr };
 
   const { error } = await supabase
     .from('purchase_order_items')
@@ -282,8 +356,17 @@ export async function updatePurchaseOrderItem(
 
 export async function removePurchaseOrderItem(itemId: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: claimsData } = await supabase.auth.getClaims();
+
+  // getUser() 대신 getClaims(): 로컬 서명 검증(네트워크 왕복 없음). RBAC 프레시니스가 필요없는 단순 인증 확인 자리.
+
+  const user = claimsData?.claims ? { id: claimsData.claims.sub, email: claimsData.claims.email, user_metadata: claimsData.claims.user_metadata, app_metadata: claimsData.claims.app_metadata } : null;
   if (!user) return { error: '로그인이 필요합니다' };
+
+  const { data: item } = await supabase.from('purchase_order_items').select('purchase_order_id').eq('id', itemId).maybeSingle();
+  if (!item) return { error: '품목을 찾을 수 없습니다' };
+  const lockErr = await ensurePoEditable(supabase, item.purchase_order_id);
+  if (lockErr) return { error: lockErr };
 
   const { error } = await supabase
     .from('purchase_order_items')
@@ -302,7 +385,11 @@ export async function addPayment(
   data: { amount: number; method?: string; paid_at: string; label?: string; memo?: string; attachment_url?: string },
 ) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: claimsData } = await supabase.auth.getClaims();
+
+  // getUser() 대신 getClaims(): 로컬 서명 검증(네트워크 왕복 없음). RBAC 프레시니스가 필요없는 단순 인증 확인 자리.
+
+  const user = claimsData?.claims ? { id: claimsData.claims.sub, email: claimsData.claims.email, user_metadata: claimsData.claims.user_metadata, app_metadata: claimsData.claims.app_metadata } : null;
   if (!user) return { error: '로그인이 필요합니다' };
 
   const { error } = await supabase.from('purchase_order_payments').insert({
@@ -327,7 +414,11 @@ export async function addPayment(
 
 export async function removePayment(paymentId: string, poId: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: claimsData } = await supabase.auth.getClaims();
+
+  // getUser() 대신 getClaims(): 로컬 서명 검증(네트워크 왕복 없음). RBAC 프레시니스가 필요없는 단순 인증 확인 자리.
+
+  const user = claimsData?.claims ? { id: claimsData.claims.sub, email: claimsData.claims.email, user_metadata: claimsData.claims.user_metadata, app_metadata: claimsData.claims.app_metadata } : null;
   if (!user) return { error: '로그인이 필요합니다' };
 
   const { error } = await supabase

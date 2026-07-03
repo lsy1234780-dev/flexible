@@ -3,7 +3,7 @@
 import { useState, useMemo, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Trash2, Plus, Pencil, Check, X, DollarSign, Package, Truck, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Trash2, Plus, Pencil, Check, X, DollarSign, Package, Truck, ExternalLink, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +19,7 @@ import {
   removePurchaseOrderItem,
   addPayment,
   removePayment,
+  finalizePurchaseOrder,
 } from '@/actions/purchaseOrders';
 import {
   type InboundShipmentDetail,
@@ -30,6 +31,9 @@ import { getStageConfig, getShippingTypeLabel, getCustomsStatusLabel, INBOUND_ST
 import { toast } from 'sonner';
 import dayjs from 'dayjs';
 import CreateShipmentDialog from '../components/CreateShipmentDialog';
+import ApprovalPanel from '@/components/ApprovalPanel';
+import ShareToChat from '@/components/ShareToChat';
+import RecordThread from '@/components/RecordThread';
 
 interface Product {
   id: string;
@@ -111,6 +115,16 @@ export default function PurchaseOrderDetailClient({ purchaseOrder: po, shipmentD
     });
   }
 
+  function handleFinalize() {
+    if (!confirm('이 발주를 확정하시겠습니까?')) return;
+    startTransition(async () => {
+      const res = await finalizePurchaseOrder(po.id);
+      if (res?.error) { toast.error(res.error); return; }
+      toast.success('발주가 확정되었습니다');
+      router.refresh();
+    });
+  }
+
   function handleCreateShipmentFromItems() {
     if (selectedItems.length === 0) {
       toast.error('운송할 품목을 선택하세요');
@@ -146,6 +160,9 @@ export default function PurchaseOrderDetailClient({ purchaseOrder: po, shipmentD
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{po.title}</h1>
+            <Badge variant={po.status === 'approved' ? 'default' : 'secondary'} className="shrink-0">
+              {po.status === 'approved' ? '확정' : '초안'}
+            </Badge>
             <Badge className={`${paymentConfig.color} shrink-0`}>{paymentConfig.label}</Badge>
           </div>
           <p className="text-xs sm:text-sm text-gray-500 truncate">
@@ -155,6 +172,12 @@ export default function PurchaseOrderDetailClient({ purchaseOrder: po, shipmentD
             {dayjs(po.created_at).format('YYYY.MM.DD')}
           </p>
         </div>
+        <ShareToChat entityType="purchase_order" entityId={po.id} label={po.title} />
+        {po.status === 'draft' && (
+          <Button size="sm" className="shrink-0" onClick={handleFinalize} disabled={isPending}>
+            <CheckCircle size={14} className="mr-1" /> 발주 확정
+          </Button>
+        )}
         <Button variant="destructive" size="icon" className="h-8 w-8 sm:hidden shrink-0" onClick={handleDelete} disabled={isPending}>
           <Trash2 size={14} />
         </Button>
@@ -163,6 +186,16 @@ export default function PurchaseOrderDetailClient({ purchaseOrder: po, shipmentD
           삭제
         </Button>
       </div>
+
+      {/* 승인 워크플로우 — 초안 상태일 때만 의미 있음 */}
+      {po.status === 'draft' && (
+        <ApprovalPanel
+          entityType="purchase_order"
+          entityId={po.id}
+          entityLabel={po.title}
+          onChange={() => router.refresh()}
+        />
+      )}
 
       {/* 발주 정보 (compact) + 통화 설정 */}
       <PurchaseInfoCompact po={po} symbol={symbol} currency={currency} suppliers={suppliers} />
@@ -223,6 +256,13 @@ export default function PurchaseOrderDetailClient({ purchaseOrder: po, shipmentD
               ))}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* 레코드 스레드 — 이 발주에 붙는 대화 + 역링크 (승인 요청도 여기 남는다) */}
+      <Card>
+        <CardContent className="py-4">
+          <RecordThread entityType="purchase_order" entityId={po.id} entityLabel={po.title} />
         </CardContent>
       </Card>
 

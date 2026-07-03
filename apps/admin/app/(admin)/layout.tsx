@@ -1,6 +1,7 @@
 import Sidebar from '@/components/Sidebar';
 import { ModulesProvider } from '@/components/ModulesProvider';
 import ChatWidget from '@/components/chat/ChatWidget';
+import GlobalSearch from '@/components/GlobalSearch';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { getUserRole, getCurrentUser } from '@/actions/auth';
 import { getMyExtraMenus } from '@/actions/roleGroups';
@@ -43,6 +44,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <ModulesProvider modules={enabledModules}>
           <main className="flex-1 overflow-y-auto p-4 pt-18 md:p-6 md:pt-6">{children}</main>
           <ChatWidget />
+          <GlobalSearch />
         </ModulesProvider>
       </div>
     </TooltipProvider>

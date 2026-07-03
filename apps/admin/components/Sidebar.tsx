@@ -14,6 +14,7 @@ import { signOut } from '@/actions/auth';
 import { canAccessMenu } from '@/lib/roles';
 import { isMenuModuleEnabled } from '@/lib/modules';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { useGlobalSearch } from '@/lib/globalSearchStore';
 import type { UserRole, MenuAccessRule } from '@/lib/roles';
 
 const LOGISTICS_URL = process.env.NEXT_PUBLIC_LOGISTICS_URL ?? 'http://localhost:3003';
@@ -105,6 +106,7 @@ export default function Sidebar({ role, menuRules, departmentLabels = {}, positi
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [isPending, startTransition] = useTransition();
   const [finderOpen, setFinderOpen] = useState(false);
+  const openGlobalSearch = useGlobalSearch((s) => s.setOpen);
 
   function handleSignOut() {
     if (!confirm('로그아웃하시겠습니까?')) return;
@@ -317,9 +319,14 @@ export default function Sidebar({ role, menuRules, departmentLabels = {}, positi
       {/* 모바일 상단바 */}
       <div className="fixed top-0 left-0 right-0 z-40 flex h-14 items-center justify-between border-b bg-white px-4 md:hidden">
         <span className="font-bold text-gray-900">ERP 어드민</span>
-        <button onClick={() => setOpen(!open)} className="p-1 text-gray-600">
-          {open ? <X size={22} /> : <Menu size={22} />}
-        </button>
+        <div className="flex items-center gap-1">
+          <button onClick={() => openGlobalSearch(true)} className="p-1 text-gray-600">
+            <Search size={20} />
+          </button>
+          <button onClick={() => setOpen(!open)} className="p-1 text-gray-600">
+            {open ? <X size={22} /> : <Menu size={22} />}
+          </button>
+        </div>
       </div>
 
       {/* 모바일 드로어 */}
@@ -358,6 +365,26 @@ export default function Sidebar({ role, menuRules, departmentLabels = {}, positi
               {sidebarCollapsed ? '사이드바 펼치기' : '사이드바 접기'}
             </TooltipContent>
           </Tooltip>
+        </div>
+        <div className="p-3 pb-0">
+          {withTooltip(
+            <button
+              onClick={() => openGlobalSearch(true)}
+              className={cn(
+                'flex w-full items-center gap-2 rounded-lg border bg-gray-50 px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-gray-100',
+                sidebarCollapsed && 'justify-center',
+              )}
+            >
+              <Search size={16} className="flex-shrink-0" />
+              {!sidebarCollapsed && (
+                <>
+                  <span className="flex-1 text-left">검색</span>
+                  <kbd className="flex-shrink-0 rounded border bg-white px-1.5 py-0.5 text-[10px] text-gray-400">⌘K</kbd>
+                </>
+              )}
+            </button>,
+            '검색 (⌘K)',
+          )}
         </div>
         <div className="flex-1 overflow-y-auto">{renderNavLinks()}</div>
         {renderBottomNav()}

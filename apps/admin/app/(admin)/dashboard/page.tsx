@@ -1,12 +1,12 @@
-import { getDashboardStats, getUrgentItems } from '@/actions/dashboard';
+import { getDashboardStats, getDashboardCharts } from '@/actions/dashboard';
 import { getUserRole } from '@/actions/auth';
 import { getDepartments } from '@/actions/departments';
 import DashboardClient from './DashboardClient';
 
 export default async function DashboardPage() {
-  const [stats, urgentItems, role, departments] = await Promise.all([
+  const [stats, charts, role, departments] = await Promise.all([
     getDashboardStats(),
-    getUrgentItems(),
+    getDashboardCharts(),
     getUserRole(),
     getDepartments(),
   ]);
@@ -17,7 +17,7 @@ export default async function DashboardPage() {
   return (
     <DashboardClient
       stats={stats}
-      urgentItems={urgentItems}
+      charts={charts}
       department={role.department ?? ''}
       departmentLabel={departmentLabel}
     />

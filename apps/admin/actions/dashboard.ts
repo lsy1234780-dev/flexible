@@ -1,7 +1,9 @@
 'use server';
 
+import dayjs from 'dayjs';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
+import { entityHref } from '@/lib/moduleRegistry';
 
 export interface UrgentItem {
   id: string;
@@ -9,19 +11,25 @@ export interface UrgentItem {
   sub: string;
   href: string;
   level: 'high' | 'medium';
+  kind: 'order' | 'as' | 'stock' | 'quote' | 'mentions' | 'approval';
+  entityId?: string; // kind별 원본 레코드 id — 인박스에서 인라인 액션(예: 수주 확정) 타겟팅용
 }
 
 export async function getUrgentItems(): Promise<UrgentItem[]> {
   const supabase = await createClient();
   const ws = await getCurrentWorkspaceId();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: claimsData } = await supabase.auth.getClaims();
+
+  // getUser() 대신 getClaims(): 로컬 서명 검증(네트워크 왕복 없음). RBAC 프레시니스가 필요없는 단순 인증 확인 자리.
+
+  const user = claimsData?.claims ? { id: claimsData.claims.sub, email: claimsData.claims.email, user_metadata: claimsData.claims.user_metadata, app_metadata: claimsData.claims.app_metadata } : null;
 
   const now = new Date();
   const day3 = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString();
   const day7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const day30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  const [staleOrders, staleAs, zeroStock, staleQuotes, unreadMentions] = await Promise.all([
+  const [staleOrders, staleAs, zeroStock, staleQuotes, unreadMentions, myApprovals] = await Promise.all([
     // 7일 이상 대기 중인 수주
     supabase
       .from('orders')
@@ -58,6 +66,15 @@ export async function getUrgentItems(): Promise<UrgentItem[]> {
     user
       ? supabase.rpc('get_my_mentions', { p_limit: 20 })
       : Promise.resolve({ data: [], error: null }),
+
+    // 내가 승인해야 할 대기 건 — chat 모듈과 무관하게 인박스에 노출(멘션 알림에 의존하지 않게)
+    user
+      ? supabase
+          .from('approvals')
+          .select('id, entity_type, entity_id, entity_label, requested_by_name, created_at')
+          .eq('approver_id', user.id)
+          .eq('status', 'pending')
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   const items: UrgentItem[] = [];
@@ -71,6 +88,8 @@ export async function getUrgentItems(): Promise<UrgentItem[]> {
       sub: `${co?.name ?? '-'} · ${days}일째 대기 중`,
       href: `/orders/${o.order_number ?? o.id}`,
       level: days >= 14 ? 'high' : 'medium',
+      kind: 'order',
+      entityId: o.id,
     });
   }
 
@@ -84,6 +103,8 @@ export async function getUrgentItems(): Promise<UrgentItem[]> {
       sub: `${co?.name ?? '-'} · 처리 필요`,
       href: `/as/${a.id}`,
       level: days >= 7 ? 'high' : 'medium',
+      kind: 'as',
+      entityId: a.id,
     });
   }
 
@@ -94,6 +115,8 @@ export async function getUrgentItems(): Promise<UrgentItem[]> {
       sub: '재고 0개 — 입고 확인 필요',
       href: `/products/${p.id}`,
       level: 'high',
+      kind: 'stock',
+      entityId: p.id,
     });
   }
 
@@ -104,8 +127,23 @@ export async function getUrgentItems(): Promise<UrgentItem[]> {
       id: `quote-${q.id}`,
       label: `견적 ${q.number} 미발송`,
       sub: `${co?.name ?? '-'} · ${days}일째 초안`,
-      href: `/quotations`,
+      href: `/quotations/${q.id}`,
       level: 'medium',
+      kind: 'quote',
+      entityId: q.id,
+    });
+  }
+
+  type ApprovalRow = { id: string; entity_type: string; entity_id: string; entity_label: string | null; requested_by_name: string | null; created_at: string };
+  for (const ap of (myApprovals.data ?? []) as ApprovalRow[]) {
+    const href = entityHref(ap.entity_type, ap.entity_id);
+    items.push({
+      id: `approval-${ap.id}`,
+      label: `승인 요청: ${ap.entity_label ?? '레코드'}`,
+      sub: `${ap.requested_by_name ?? '요청자'} 님이 승인을 기다립니다`,
+      href: href !== '#' ? href : '/inbox',
+      level: 'high',
+      kind: 'approval',
     });
   }
 
@@ -118,6 +156,7 @@ export async function getUrgentItems(): Promise<UrgentItem[]> {
       sub: '채팅에서 나를 언급한 메시지',
       href: `/chat`,
       level: mentionCount >= 3 ? 'high' : 'medium',
+      kind: 'mentions',
     });
   }
 
@@ -125,23 +164,20 @@ export async function getUrgentItems(): Promise<UrgentItem[]> {
   return items.sort((a, b) => (a.level === b.level ? 0 : a.level === 'high' ? -1 : 1));
 }
 
+// 대시보드는 "사업에 관한 사항과 데이터"만 다룬다 — 개인 할 일/멘션/알림성 정보는 인박스가 전담한다.
 export interface DashboardStats {
   orders: { pending: number; confirmed: number; shipped: number };
   quotations: { id: string; quote_number: string; company_name: string; total: number; created_at: string }[];
   as: { received: number; inspecting: number; repairing: number };
-  inventory: { id: string; name: string; stock: number }[];
   receiving: { pending: number; partial: number };
   crm: { stage: string; color: string; count: number }[];
-  mentions: { unread: number };
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
   const supabase = await createClient();
   const ws = await getCurrentWorkspaceId();
 
-  const { data: { user } } = await supabase.auth.getUser();
-
-  const [orders, quotations, as_reqs, products, receiving, deals, mentions] = await Promise.all([
+  const [orders, quotations, as_reqs, receiving, deals] = await Promise.all([
     // 수주 현황
     supabase
       .from('orders')
@@ -162,15 +198,6 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       .select('status')
       .eq('workspace_id', ws),
 
-    // 재고 부족 (stock 10 이하)
-    supabase
-      .from('products')
-      .select('id, name, base_stock')
-      .eq('workspace_id', ws)
-      .lte('base_stock', 10)
-      .order('base_stock', { ascending: true })
-      .limit(5),
-
     // 입고 대기
     supabase
       .from('receiving_orders')
@@ -183,11 +210,6 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       .select('deal_stages(name, color)')
       .eq('workspace_id', ws)
       .not('stage_id', 'is', null),
-
-    // 내 미읽음 멘션 (get_my_mentions RPC)
-    user
-      ? supabase.rpc('get_my_mentions', { p_limit: 20 })
-      : Promise.resolve({ data: [], error: null }),
   ]);
 
   // 수주 집계
@@ -216,13 +238,6 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     repairing: asRows.filter((r) => r.status === 'repairing').length,
   };
 
-  // 재고 부족 제품
-  const inventoryList = (products.data ?? []).map((p) => ({
-    id: p.id,
-    name: p.name,
-    stock: p.base_stock ?? 0,
-  }));
-
   // 입고 집계
   const receivingRows = receiving.data ?? [];
   const receivingStats = {
@@ -245,12 +260,114 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     orders: orderStats,
     quotations: quoteList,
     as: asStats,
-    inventory: inventoryList,
     receiving: receivingStats,
     crm: crmList,
-    mentions: {
-      unread: ((mentions.data ?? []) as { is_unread: boolean }[])
-        .filter((m) => m.is_unread).length,
-    },
+  };
+}
+
+// ── 대시보드 차트 (사업 데이터 추이) ──
+export interface TrendPoint { date: string; value: number; }
+export interface NamedValue { name: string; value: number; }
+
+export interface DashboardCharts {
+  // 추이(일별/월별 토글용) — 최근 30일 / 최근 12개월, 값 없는 구간도 0으로 채움
+  revenueTrendDaily: TrendPoint[];
+  revenueTrendMonthly: TrendPoint[];
+  orderCountTrendDaily: TrendPoint[];
+  orderCountTrendMonthly: TrendPoint[];
+  // 순위/비중 — 최근 12개월 확정 매출 기준
+  topCompanies: NamedValue[];
+  topProducts: NamedValue[];
+  categoryBreakdown: NamedValue[];
+}
+
+export async function getDashboardCharts(): Promise<DashboardCharts> {
+  const supabase = await createClient();
+  const ws = await getCurrentWorkspaceId();
+  const month12 = dayjs().subtract(12, 'month').toISOString();
+
+  // 확정된 수주만 "매출"로 집계 — order_items 합산. 12개월치를 한 번에 가져와 일별/월별 뷰를 함께 만든다.
+  // 취소 제외: cancel RPC는 status='cancelled'로 바꾸되 confirmed_at은 남겨두고 재고를 복원하므로,
+  // confirmed_at만 필터하면 '취소돼서 되돌린 매출'이 그대로 집계된다 → status로 명시적으로 배제.
+  const { data, error } = await supabase
+    .from('orders')
+    .select('confirmed_at, companies(name), order_items(quantity, unit_price, products(name, categories(name)))')
+    .eq('workspace_id', ws)
+    .not('confirmed_at', 'is', null)
+    .neq('status', 'cancelled')
+    .gte('confirmed_at', month12);
+  if (error) throw new Error(error.message);
+
+  type Row = {
+    confirmed_at: string;
+    companies: { name: string } | null;
+    order_items: { quantity: number; unit_price: number; products: { name: string; categories: { name: string } | null } | null }[] | null;
+  };
+  const rows = (data ?? []) as unknown as Row[];
+
+  const byDayRevenue = new Map<string, number>();
+  const byDayCount = new Map<string, number>();
+  const byMonthRevenue = new Map<string, number>();
+  const byMonthCount = new Map<string, number>();
+  const byCompany = new Map<string, number>();
+  const byProduct = new Map<string, number>();
+  const byCategory = new Map<string, number>();
+
+  for (const o of rows) {
+    const items = o.order_items ?? [];
+    const total = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
+
+    // 일별 키는 연도 포함(YYYY-MM-DD) — 12개월치를 집계하므로 MM.DD로 키잉하면 정확히 1년 전 같은
+    // 월일이 오늘 버킷에 합산돼 이중집계된다. 표시 라벨(MM.DD)은 채우는 단계에서 별도로 만든다.
+    const dayKey = dayjs(o.confirmed_at).format('YYYY-MM-DD');
+    const monthKey = dayjs(o.confirmed_at).format('YYYY.MM');
+    byDayRevenue.set(dayKey, (byDayRevenue.get(dayKey) ?? 0) + total);
+    byDayCount.set(dayKey, (byDayCount.get(dayKey) ?? 0) + 1);
+    byMonthRevenue.set(monthKey, (byMonthRevenue.get(monthKey) ?? 0) + total);
+    byMonthCount.set(monthKey, (byMonthCount.get(monthKey) ?? 0) + 1);
+
+    const companyName = o.companies?.name ?? '기타';
+    byCompany.set(companyName, (byCompany.get(companyName) ?? 0) + total);
+
+    for (const item of items) {
+      const itemTotal = item.quantity * item.unit_price;
+      const productName = item.products?.name ?? '기타';
+      byProduct.set(productName, (byProduct.get(productName) ?? 0) + itemTotal);
+      const categoryName = item.products?.categories?.name ?? '미분류';
+      byCategory.set(categoryName, (byCategory.get(categoryName) ?? 0) + itemTotal);
+    }
+  }
+
+  // 최근 30일 — 매일 채움 (데이터 없는 날도 0). 조회 키는 전체 날짜, 축 라벨은 MM.DD.
+  const revenueTrendDaily: TrendPoint[] = [];
+  const orderCountTrendDaily: TrendPoint[] = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = dayjs().subtract(i, 'day');
+    const key = d.format('YYYY-MM-DD');
+    const label = d.format('MM.DD');
+    revenueTrendDaily.push({ date: label, value: byDayRevenue.get(key) ?? 0 });
+    orderCountTrendDaily.push({ date: label, value: byDayCount.get(key) ?? 0 });
+  }
+
+  // 최근 12개월 — 매월 채움
+  const revenueTrendMonthly: TrendPoint[] = [];
+  const orderCountTrendMonthly: TrendPoint[] = [];
+  for (let i = 11; i >= 0; i--) {
+    const key = dayjs().subtract(i, 'month').format('YYYY.MM');
+    revenueTrendMonthly.push({ date: key, value: byMonthRevenue.get(key) ?? 0 });
+    orderCountTrendMonthly.push({ date: key, value: byMonthCount.get(key) ?? 0 });
+  }
+
+  const toRanked = (m: Map<string, number>, limit: number) =>
+    [...m.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, limit);
+
+  return {
+    revenueTrendDaily,
+    revenueTrendMonthly,
+    orderCountTrendDaily,
+    orderCountTrendMonthly,
+    topCompanies: toRanked(byCompany, 5),
+    topProducts: toRanked(byProduct, 5),
+    categoryBreakdown: toRanked(byCategory, 8),
   };
 }

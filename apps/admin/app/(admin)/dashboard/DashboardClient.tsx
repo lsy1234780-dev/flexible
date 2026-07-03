@@ -6,41 +6,53 @@ import dayjs from 'dayjs';
 import numeral from 'numeral';
 import {
   Settings2, X, Plus, ShoppingCart, FileText,
-  Wrench, Package, Truck, TrendingUp, Bell,
-  AlertCircle, AlertTriangle, ChevronRight,
+  Wrench, Truck, TrendingUp, LineChart as LineChartIcon, BarChart3, PieChart as PieChartIcon, Package,
 } from 'lucide-react';
+import {
+  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts';
 import { cn } from '@/lib/utils';
-import type { DashboardStats, UrgentItem } from '@/actions/dashboard';
+import type { DashboardStats, DashboardCharts } from '@/actions/dashboard';
 
 // ── 위젯 정의 ──
-type WidgetId = 'orders' | 'quotations' | 'as' | 'inventory' | 'receiving' | 'crm' | 'mentions';
+// 대시보드는 "사업에 관한 사항과 데이터"만 다룬다 — 개인 할 일/멘션/알림성 위젯(긴급 처리·재고
+// 알림·내 멘션)은 인박스가 전담하므로 여기 두지 않는다(중복 방지).
+// 클라우드플레어처럼 지표를 직접 조합하는 건 아니고, 미리 만든 차트 중 골라서 추가/제거하는 방식.
+type WidgetId =
+  | 'orders' | 'quotations' | 'as' | 'receiving' | 'crm'
+  | 'revenueTrend' | 'orderCountTrend' | 'topCompanies' | 'topProducts' | 'categoryBreakdown';
 
 interface WidgetDef {
   id: WidgetId;
   label: string;
   icon: React.ReactNode;
   description: string;
+  wide?: boolean; // 차트류는 좁은 칸에서 찌그러지므로 그리드에서 더 넓게 차지
 }
 
 const WIDGET_DEFS: WidgetDef[] = [
-  { id: 'orders',     label: '수주 현황',      icon: <ShoppingCart size={15} />, description: '대기·확정·출고 건수' },
-  { id: 'quotations', label: '최근 견적',       icon: <FileText size={15} />,     description: '최근 견적서 5건' },
-  { id: 'as',         label: 'A/S 현황',        icon: <Wrench size={15} />,       description: '접수·점검·수리 건수' },
-  { id: 'inventory',  label: '재고 부족 알림',  icon: <Package size={15} />,      description: '재고 10개 이하 제품' },
-  { id: 'receiving',  label: '입고 대기',        icon: <Truck size={15} />,        description: '미처리 입고지시서' },
-  { id: 'crm',        label: '영업 파이프라인', icon: <TrendingUp size={15} />,   description: '단계별 딜 현황' },
-  { id: 'mentions',   label: '내 멘션',          icon: <Bell size={15} />,         description: '안읽은 멘션 수' },
+  { id: 'orders',            label: '수주 현황',          icon: <ShoppingCart size={15} />,  description: '대기·확정·출고 건수' },
+  { id: 'quotations',        label: '최근 견적',           icon: <FileText size={15} />,      description: '최근 견적서 5건' },
+  { id: 'as',                label: 'A/S 현황',            icon: <Wrench size={15} />,        description: '접수·점검·수리 건수' },
+  { id: 'receiving',         label: '입고 대기',            icon: <Truck size={15} />,         description: '미처리 입고지시서' },
+  { id: 'crm',               label: '영업 파이프라인',     icon: <TrendingUp size={15} />,    description: '단계별 딜 현황' },
+  { id: 'revenueTrend',      label: '매출 추이',           icon: <LineChartIcon size={15} />, description: '확정 매출 — 일별/월별', wide: true },
+  { id: 'orderCountTrend',   label: '수주 건수 추이',       icon: <LineChartIcon size={15} />, description: '확정 수주 건수 — 일별/월별', wide: true },
+  { id: 'topCompanies',      label: '거래처별 매출 TOP5',   icon: <BarChart3 size={15} />,     description: '최근 12개월 확정 매출 기준', wide: true },
+  { id: 'topProducts',       label: '제품별 판매 TOP5',     icon: <Package size={15} />,       description: '최근 12개월 확정 매출 기준', wide: true },
+  { id: 'categoryBreakdown', label: '카테고리별 매출 비중', icon: <PieChartIcon size={15} />,  description: '최근 12개월 확정 매출 기준', wide: true },
 ];
 
 // 부서별 기본 위젯 세트
 const DEFAULT_WIDGETS: Record<string, WidgetId[]> = {
-  sales:      ['crm', 'orders', 'quotations', 'mentions'],
-  logistics:  ['receiving', 'inventory', 'orders'],
-  warehouse:  ['inventory', 'receiving', 'orders'],
-  service:    ['as', 'orders', 'mentions'],
-  management: ['orders', 'crm', 'as', 'inventory'],
+  sales:      ['crm', 'orders', 'quotations', 'revenueTrend'],
+  logistics:  ['receiving', 'orders'],
+  warehouse:  ['receiving', 'orders'],
+  service:    ['as', 'orders'],
+  management: ['orders', 'crm', 'as', 'revenueTrend', 'topCompanies'],
 };
-const FALLBACK_WIDGETS: WidgetId[] = ['orders', 'crm', 'as', 'inventory'];
+const FALLBACK_WIDGETS: WidgetId[] = ['orders', 'crm', 'as'];
 
 function getDefaultWidgets(department: string): WidgetId[] {
   return DEFAULT_WIDGETS[department] ?? FALLBACK_WIDGETS;
@@ -49,9 +61,11 @@ function getDefaultWidgets(department: string): WidgetId[] {
 const STORAGE_KEY = 'dashboard_widgets_v1';
 
 function loadWidgets(department: string): WidgetId[] {
+  const validIds = WIDGET_DEFS.map((w) => w.id);
   try {
     const raw = localStorage.getItem(`${STORAGE_KEY}_${department}`);
-    if (raw) return JSON.parse(raw) as WidgetId[];
+    // 이전 버전에 있다가 제거된 위젯 id(mentions/inventory)가 저장돼 있을 수 있어 걸러낸다
+    if (raw) return (JSON.parse(raw) as WidgetId[]).filter((id) => validIds.includes(id));
   } catch { /* noop */ }
   return getDefaultWidgets(department);
 }
@@ -65,12 +79,12 @@ function saveWidgets(department: string, widgets: WidgetId[]) {
 // ── Props ──
 interface Props {
   stats: DashboardStats;
-  urgentItems: UrgentItem[];
+  charts: DashboardCharts;
   department: string;
   departmentLabel: string;
 }
 
-export default function DashboardClient({ stats, urgentItems, department, departmentLabel }: Props) {
+export default function DashboardClient({ stats, charts, department, departmentLabel }: Props) {
   const [widgets, setWidgets] = useState<WidgetId[]>([]);
   const [editing, setEditing] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -119,11 +133,6 @@ export default function DashboardClient({ stats, urgentItems, department, depart
         </button>
       </div>
 
-      {/* 지금 처리할 것 */}
-      {urgentItems.length > 0 && (
-        <UrgentSection items={urgentItems} />
-      )}
-
       {/* 위젯 추가 영역 (편집 모드) */}
       {editing && available.length > 0 && (
         <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4">
@@ -150,6 +159,7 @@ export default function DashboardClient({ stats, urgentItems, department, depart
             key={id}
             id={id}
             stats={stats}
+            charts={charts}
             editing={editing}
             onRemove={() => removeWidget(id)}
           />
@@ -170,56 +180,13 @@ export default function DashboardClient({ stats, urgentItems, department, depart
   );
 }
 
-// ── 지금 처리할 것 ──
-function UrgentSection({ items }: { items: UrgentItem[] }) {
-  const high = items.filter((i) => i.level === 'high');
-  const medium = items.filter((i) => i.level === 'medium');
-
-  return (
-    <div className="rounded-xl border border-red-100 bg-red-50/40">
-      <div className="flex items-center gap-2 border-b border-red-100 px-4 py-3">
-        <AlertCircle size={15} className="text-red-500" />
-        <span className="text-sm font-semibold text-red-700">지금 처리할 것</span>
-        <span className="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white">
-          {items.length}
-        </span>
-      </div>
-      <div className="divide-y divide-red-100/60">
-        {high.map((item) => (
-          <UrgentRow key={item.id} item={item} />
-        ))}
-        {medium.map((item) => (
-          <UrgentRow key={item.id} item={item} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function UrgentRow({ item }: { item: UrgentItem }) {
-  return (
-    <Link
-      href={item.href}
-      className="flex items-center gap-3 px-4 py-3 hover:bg-red-50 transition-colors"
-    >
-      {item.level === 'high'
-        ? <AlertCircle size={14} className="flex-shrink-0 text-red-500" />
-        : <AlertTriangle size={14} className="flex-shrink-0 text-orange-400" />
-      }
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-800">{item.label}</p>
-        <p className="text-xs text-gray-500">{item.sub}</p>
-      </div>
-      <ChevronRight size={14} className="flex-shrink-0 text-gray-300" />
-    </Link>
-  );
-}
-
 // ── 위젯 카드 래퍼 ──
-function WidgetCard({ id, stats, editing, onRemove }: { id: WidgetId; stats: DashboardStats; editing: boolean; onRemove: () => void }) {
+function WidgetCard({ id, stats, charts, editing, onRemove }: {
+  id: WidgetId; stats: DashboardStats; charts: DashboardCharts; editing: boolean; onRemove: () => void;
+}) {
   const def = WIDGET_DEFS.find((w) => w.id === id)!;
   return (
-    <div className="relative rounded-xl border bg-white shadow-sm">
+    <div className={cn('relative rounded-xl border bg-white shadow-sm', def.wide && 'sm:col-span-2')}>
       {editing && (
         <button
           onClick={onRemove}
@@ -233,13 +200,30 @@ function WidgetCard({ id, stats, editing, onRemove }: { id: WidgetId; stats: Das
         <span className="text-sm font-semibold text-gray-800">{def.label}</span>
       </div>
       <div className="p-4">
-        {id === 'orders'     && <OrdersWidget stats={stats.orders} />}
-        {id === 'quotations' && <QuotationsWidget stats={stats.quotations} />}
-        {id === 'as'         && <AsWidget stats={stats.as} />}
-        {id === 'inventory'  && <InventoryWidget stats={stats.inventory} />}
-        {id === 'receiving'  && <ReceivingWidget stats={stats.receiving} />}
-        {id === 'crm'        && <CrmWidget stats={stats.crm} />}
-        {id === 'mentions'   && <MentionsWidget stats={stats.mentions} />}
+        {id === 'orders'            && <OrdersWidget stats={stats.orders} />}
+        {id === 'quotations'        && <QuotationsWidget stats={stats.quotations} />}
+        {id === 'as'                && <AsWidget stats={stats.as} />}
+        {id === 'receiving'         && <ReceivingWidget stats={stats.receiving} />}
+        {id === 'crm'               && <CrmWidget stats={stats.crm} />}
+        {id === 'revenueTrend'      && (
+          <TrendChartWidget
+            daily={charts.revenueTrendDaily}
+            monthly={charts.revenueTrendMonthly}
+            formatValue={(v) => `₩${numeral(v).format('0,0')}`}
+            formatAxis={(v) => numeral(v).format('0a')}
+          />
+        )}
+        {id === 'orderCountTrend'   && (
+          <TrendChartWidget
+            daily={charts.orderCountTrendDaily}
+            monthly={charts.orderCountTrendMonthly}
+            formatValue={(v) => `${numeral(v).format('0,0')}건`}
+            formatAxis={(v) => numeral(v).format('0a')}
+          />
+        )}
+        {id === 'topCompanies'      && <RankedBarWidget data={charts.topCompanies} formatValue={(v) => `₩${numeral(v).format('0,0')}`} />}
+        {id === 'topProducts'       && <RankedBarWidget data={charts.topProducts} formatValue={(v) => `₩${numeral(v).format('0,0')}`} />}
+        {id === 'categoryBreakdown' && <CategoryPieWidget data={charts.categoryBreakdown} />}
       </div>
     </div>
   );
@@ -295,24 +279,6 @@ function AsWidget({ stats }: { stats: DashboardStats['as'] }) {
   );
 }
 
-function InventoryWidget({ stats }: { stats: DashboardStats['inventory'] }) {
-  if (stats.length === 0) {
-    return <p className="text-sm text-gray-400">재고 부족 제품이 없습니다.</p>;
-  }
-  return (
-    <div className="space-y-1.5">
-      {stats.map((p) => (
-        <Link key={p.id} href={`/products/${p.id}`} className="flex items-center justify-between rounded-lg px-1 py-1 hover:bg-gray-50">
-          <span className="text-sm text-gray-700 truncate">{p.name}</span>
-          <span className={cn('ml-2 flex-shrink-0 text-sm font-bold tabular-nums', p.stock === 0 ? 'text-red-600' : 'text-orange-500')}>
-            {p.stock}개
-          </span>
-        </Link>
-      ))}
-    </div>
-  );
-}
-
 function ReceivingWidget({ stats }: { stats: DashboardStats['receiving'] }) {
   return (
     <div className="space-y-0.5">
@@ -341,23 +307,105 @@ function CrmWidget({ stats }: { stats: DashboardStats['crm'] }) {
           </div>
         </div>
       ))}
-      <Link href="/crm" className="mt-1 block text-xs text-blue-600 hover:underline">
+      <Link href="/deals" className="mt-1 block text-xs text-blue-600 hover:underline">
         파이프라인 보기 →
       </Link>
     </div>
   );
 }
 
-function MentionsWidget({ stats }: { stats: DashboardStats['mentions'] }) {
+// 추이 차트 — 일별/월별 토글 가능한 라인 차트 (매출 추이, 수주 건수 추이가 공유)
+function TrendChartWidget({ daily, monthly, formatValue, formatAxis }: {
+  daily: DashboardCharts['revenueTrendDaily'];
+  monthly: DashboardCharts['revenueTrendMonthly'];
+  formatValue: (v: number) => string;
+  formatAxis: (v: number) => string;
+}) {
+  const [granularity, setGranularity] = useState<'day' | 'month'>('day');
+  const data = granularity === 'day' ? daily : monthly;
+  const total = data.reduce((s, d) => s + d.value, 0);
+
   return (
-    <div className="flex flex-col items-center justify-center py-4 gap-1">
-      <span className={cn('text-4xl font-bold tabular-nums', stats.unread > 0 ? 'text-red-500' : 'text-gray-300')}>
-        {stats.unread}
-      </span>
-      <p className="text-sm text-gray-400">안읽은 멘션</p>
-      <Link href="/chat" className="mt-1 text-xs text-blue-600 hover:underline">
-        채팅 열기 →
-      </Link>
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-lg font-bold text-gray-900 tabular-nums">{formatValue(total)}</p>
+        <div className="flex rounded-md bg-gray-100 p-0.5 text-xs">
+          {(['day', 'month'] as const).map((g) => (
+            <button
+              key={g}
+              onClick={() => setGranularity(g)}
+              className={cn(
+                'rounded px-2 py-0.5 font-medium transition-colors',
+                granularity === g ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600',
+              )}
+            >
+              {g === 'day' ? '일별' : '월별'}
+            </button>
+          ))}
+        </div>
+      </div>
+      {total === 0 ? (
+        <p className="py-10 text-center text-sm text-gray-400">해당 기간 데이터가 없습니다.</p>
+      ) : (
+        <div className="h-40">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }}
+                interval={granularity === 'day' ? 6 : 1} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false} width={40}
+                tickFormatter={(v: number) => formatAxis(v)} />
+              <Tooltip
+                formatter={(v) => [formatValue(Number(v)), '']}
+                contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }}
+              />
+              <Line type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 순위 바 차트 — 거래처 TOP5, 제품 TOP5가 공유
+function RankedBarWidget({ data, formatValue }: { data: DashboardCharts['topCompanies']; formatValue: (v: number) => string }) {
+  if (data.length === 0) return <p className="text-sm text-gray-400">최근 12개월 확정된 매출이 없습니다.</p>;
+  return (
+    <div className="h-40">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} layout="vertical" margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+          <XAxis type="number" tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false}
+            tickFormatter={(v: number) => numeral(v).format('0a')} />
+          <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#374151' }} tickLine={false} axisLine={false} width={80} />
+          <Tooltip
+            formatter={(v) => [formatValue(Number(v)), '']}
+            contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }}
+          />
+          <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+const PIE_COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#0ea5e9', '#a855f7', '#14b8a6', '#f97316'];
+
+function CategoryPieWidget({ data }: { data: DashboardCharts['categoryBreakdown'] }) {
+  if (data.length === 0) return <p className="text-sm text-gray-400">최근 12개월 확정된 매출이 없습니다.</p>;
+  return (
+    <div className="h-44">
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+          <Pie data={data} dataKey="value" nameKey="name" cx="35%" cy="50%" outerRadius={55} paddingAngle={1}>
+            {data.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+          </Pie>
+          <Tooltip formatter={(v) => [`₩${numeral(Number(v)).format('0,0')}`, '']} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }} />
+          <Legend layout="vertical" verticalAlign="middle" align="right" iconSize={8}
+            wrapperStyle={{ fontSize: 11, color: '#374151' }} />
+        </PieChart>
+      </ResponsiveContainer>
     </div>
   );
 }

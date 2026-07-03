@@ -489,6 +489,48 @@ message_attachments ( -- 파일 첨부 (Storage: chat-attachments 버킷)
 
 ---
 
+## Approvals (승인 워크플로우, 077~079)
+
+### approvals (승인 요청)
+
+```sql
+approvals (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  entity_type text NOT NULL,          -- 'order' | 'purchase_order' (moduleRegistry 엔티티 타입)
+  entity_id uuid NOT NULL,
+  entity_label text,                  -- 표시용 라벨 (수주번호 등)
+  status text NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'approved', 'rejected')),
+  requested_by uuid REFERENCES auth.users(id),
+  requested_by_name text,
+  approver_id uuid NOT NULL REFERENCES auth.users(id),  -- 건별 지정 승인자
+  approver_name text,
+  note text,                          -- 요청 메모
+  decision_note text,                 -- 승인/반려 사유
+  decided_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+)
+```
+
+**설계:**
+- 범용 테이블(entity_type/entity_id) — RecordThread/moduleRegistry와 같은 패턴. 현재는 수주 확정·구매발주 확정에 사용.
+- 승인자는 고정 역할이 아니라 **건별로 지정**(approver_id).
+- `confirmOrder`/`finalizePurchaseOrder`가 확정 전 `isApproved()`로 게이트. 승인 없이는 확정 불가.
+- 승인받은 뒤 내용 변경 차단: 수주 `updateOrderItems`는 승인 시 수정 거부, 구매발주는 `status='approved'`면 품목/거래조건 수정 거부(결제 기록은 예외).
+
+**RLS + 무결성 (078):**
+- SELECT: 워크스페이스 멤버 전체 (누가 뭘 대기 중인지 투명하게)
+- INSERT: `requested_by = auth.uid()` + 승인자도 같은 워크스페이스 멤버여야 함
+- UPDATE: 지정 승인자 + `status='pending'`인 건만
+- 트리거 `approvals_guard_update`: 결정 시 3개 컬럼(status/decision_note/decided_at)만 변경 허용, 상태 전이는 `pending→approved/rejected`만 (대상 바꿔치기·재결정 차단)
+
+**제약 (079):** `uq_approvals_one_pending` — 한 (entity_type, entity_id)당 pending 1건만 (partial unique index).
+
+**알림:** 승인자에게는 ① 인박스 긴급 항목(`getUrgentItems`, chat 무관) + ② chat 켜져 있으면 레코드 스레드 멘션, 두 경로로 노출.
+
+---
+
 ## 마이그레이션 파일 목록
 
 | # | 파일 | 내용 |
@@ -563,5 +605,14 @@ message_attachments ( -- 파일 첨부 (Storage: chat-attachments 버킷)
 | 068 | workspace_members_department | 멤버 부서 |
 | 069 | logistics_module | 물류 모듈 게이팅 |
 | 070 | record_threads | 레코드 스레드 + ERP 봇 시스템 메시지 + 인박스 RPC |
+| 071 | security_hardening | inventory_pl_view security_invoker, 함수 search_path 고정, anon 실행 회수 |
+| 072 | revoke_public_execute | SECURITY DEFINER 함수 PUBLIC EXECUTE 회수 (anon 완전 차단) |
+| 073 | perf_rls_and_fk_indexes | RLS initplan 최적화 + FK 커버링 인덱스 39개 |
+| 074 | tenant_isolation_rpc | 주문 RPC 테넌트 가드, 시드 함수 멤버십 가드, can_access_channel에 record 채널 허용 |
+| 075 | reply_mention_inheritance | 답글이 부모 메시지의 엔티티 멘션을 자동 상속 (채널 대화 중 자연스러운 답글도 레코드 히스토리에 계속 연결) |
+| 076 | reply_mention_inheritance_exclude_user | 075 보완 — 사람(@유저) 멘션은 상속 제외 (답글마다 재알림 스팸 방지) |
+| 077 | approvals | 승인 워크플로우 테이블 + purchase_orders.status(draft/approved) 추가 |
+| 078 | approvals_rls_hardening | 승인자 워크스페이스 멤버 검증(INSERT) + 결정 불변성/전이 트리거(UPDATE) |
+| 079 | approvals_one_pending | 한 레코드당 pending 승인 요청 1건 제한 (partial unique index) |
 
-**다음 마이그레이션:** `071_xxx.sql`
+**다음 마이그레이션:** `080_xxx.sql`

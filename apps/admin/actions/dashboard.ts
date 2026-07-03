@@ -11,7 +11,7 @@ export interface UrgentItem {
   sub: string;
   href: string;
   level: 'high' | 'medium';
-  kind: 'order' | 'as' | 'stock' | 'quote' | 'mentions' | 'approval';
+  kind: 'order' | 'as' | 'stock' | 'quote' | 'mentions' | 'approval' | 'attendance';
   entityId?: string; // kind별 원본 레코드 id — 인박스에서 인라인 액션(예: 수주 확정) 타겟팅용
 }
 
@@ -145,6 +145,55 @@ export async function getUrgentItems(): Promise<UrgentItem[]> {
       level: 'high',
       kind: 'approval',
     });
+  }
+
+  // 근태: 관리자에게만 "출근 전 인원" 알림 (attendance 모듈 ON + 근무일 + 기준 출근시간 경과 시)
+  // "미출근 판정"이 아니라 현황 알림 — 휴가 승인자는 제외.
+  try {
+    const { data: modOn } = await supabase
+      .from('workspace_modules')
+      .select('enabled')
+      .eq('module_key', 'attendance')
+      .eq('enabled', true)
+      .maybeSingle();
+    if (modOn) {
+      const { data: isMgr } = await supabase.rpc('is_attendance_manager', { p_ws: ws });
+      if (isMgr === true) {
+        const today = dayjs().format('YYYY-MM-DD');
+        const [{ data: policy }, { data: holiday }] = await Promise.all([
+          supabase.from('attendance_policy').select('standard_start, work_days').eq('workspace_id', ws).maybeSingle(),
+          supabase.from('holidays').select('id').eq('holiday_date', today).maybeSingle(),
+        ]);
+        const workDays: number[] = policy?.work_days ?? [1, 2, 3, 4, 5];
+        const startTime = policy?.standard_start ?? '09:00:00';
+        const isWorkDay = workDays.includes(dayjs().day()) && !holiday;
+        const pastStart = dayjs().format('HH:mm:ss') > startTime;
+
+        if (isWorkDay && pastStart) {
+          const [{ data: memberRows }, { data: todayRecords }, { data: todayLeaves }] = await Promise.all([
+            supabase.rpc('get_workspace_members'),
+            supabase.from('attendance_records').select('user_id').eq('work_date', today).not('clock_in_at', 'is', null),
+            supabase.from('leave_requests').select('user_id').eq('status', 'approved').lte('start_date', today).gte('end_date', today),
+          ]);
+          const clockedIn = new Set((todayRecords ?? []).map((r) => r.user_id as string));
+          const onLeave = new Set((todayLeaves ?? []).map((l) => l.user_id as string));
+          const notIn = ((memberRows ?? []) as { user_id: string; name: string }[])
+            .filter((m) => !clockedIn.has(m.user_id) && !onLeave.has(m.user_id));
+          if (notIn.length > 0) {
+            items.push({
+              id: 'attendance-not-in',
+              label: `출근 전 ${notIn.length}명`,
+              sub: `${notIn.slice(0, 3).map((m) => m.name).join(', ')}${notIn.length > 3 ? ' 외' : ''} · 기록 없음 (휴가 제외)`,
+              href: '/attendance/team',
+              level: 'medium',
+              kind: 'attendance',
+            });
+          }
+        }
+      }
+    }
+  } catch {
+    // 근태 알림 실패가 인박스 전체를 막지 않게 무시
   }
 
   const mentionCount = ((unreadMentions.data ?? []) as { is_unread: boolean }[])

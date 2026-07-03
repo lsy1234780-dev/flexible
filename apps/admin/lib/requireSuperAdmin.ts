@@ -7,6 +7,7 @@ import { parseRole } from '@/lib/roles';
 export async function requireSuperAdmin() {
   const supabase = await createClient();
 
+  // getUser() 유지: app_metadata(부서/직급) 기반 RBAC 게이트 — 프레시니스 필요 (auth.ts:getUserRole 참고).
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Unauthorized');
 

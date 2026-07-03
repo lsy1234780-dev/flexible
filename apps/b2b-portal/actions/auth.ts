@@ -81,9 +81,14 @@ export async function sendRegisterLink(formData: FormData) {
 }
 
 // 로그인 콜백에서 호출 — 신규 가입이면 company 생성, 기존이면 무시
+// companies.workspace_id는 NOT NULL(055) — 이 포털이 속한 워크스페이스는 env로 지정한다.
 export async function ensureCompany() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: claimsData } = await supabase.auth.getClaims();
+
+  // getUser() 대신 getClaims(): 로컬 서명 검증(네트워크 왕복 없음). RBAC 프레시니스가 필요없는 단순 인증 확인 자리.
+
+  const user = claimsData?.claims ? { id: claimsData.claims.sub, email: claimsData.claims.email, user_metadata: claimsData.claims.user_metadata, app_metadata: claimsData.claims.app_metadata } : null;
   if (!user) return;
 
   const serviceClient = createServiceClient();
@@ -95,13 +100,20 @@ export async function ensureCompany() {
 
   if (!existing) {
     const companyName = user.user_metadata?.company_name as string | undefined;
+    const workspaceId = process.env.B2B_WORKSPACE_ID;
+    if (!workspaceId) {
+      console.error('[ensureCompany] B2B_WORKSPACE_ID 환경변수가 없어 업체를 생성할 수 없습니다');
+      return;
+    }
     if (companyName) {
-      await serviceClient.from('companies').insert({
+      const { error } = await serviceClient.from('companies').insert({
         name: companyName,
         is_customer: true,
         status: 'pending',
         auth_user_id: user.id,
+        workspace_id: workspaceId,
       });
+      if (error) console.error('[ensureCompany] 업체 생성 실패:', error.message);
     }
   }
 }

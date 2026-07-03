@@ -1,16 +1,8 @@
-import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { getSessionCompany } from '@/lib/portal';
 
 export async function GET() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ needsSetup: false });
-
-  const { data: company } = await supabase
-    .from('companies')
-    .select('contact_name')
-    .eq('auth_user_id', user.id)
-    .maybeSingle();
-
-  return NextResponse.json({ needsSetup: !company?.contact_name });
+  // B2B 세션은 RLS로 companies를 읽을 수 없으므로 BFF로 조회
+  const company = await getSessionCompany();
+  return NextResponse.json({ needsSetup: !!company && !company.contact_name });
 }

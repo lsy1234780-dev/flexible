@@ -9,6 +9,6 @@ export default async function NewOrderPage({ searchParams }: { searchParams: Pro
   if (company.status !== 'active') redirect('/catalog');
 
   const { product: initialProductId } = await searchParams;
-  const products = await getCatalog(company.id);
-  return <NewOrderClient company={company} products={products} initialProductId={initialProductId} />;
+  const products = await getCatalog();
+  return <NewOrderClient products={products} initialProductId={initialProductId} />;
 }

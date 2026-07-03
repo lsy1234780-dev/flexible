@@ -24,7 +24,7 @@ export async function getSuperAdminMinLevel(): Promise<number> {
 export async function updateSuperAdminMinLevel(newLevel: number) {
   const supabase = await createClient();
 
-  // 현재 유저 권한 확인
+  // 현재 유저 권한 확인 — getUser() 유지: app_metadata 기반 RBAC 게이트 (프레시니스 필요)
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: '로그인이 필요합니다' };
 

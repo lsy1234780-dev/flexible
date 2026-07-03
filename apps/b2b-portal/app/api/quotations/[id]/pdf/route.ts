@@ -1,4 +1,5 @@
-import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/server';
+import { getSessionCompany } from '@/lib/portal';
 import { generateQuotationBuffer } from '@/lib/pdf';
 import type { QuotationData } from '@/lib/pdf';
 
@@ -7,17 +8,18 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const supabase = await createClient();
 
-  // 로그인 확인
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  // 세션 → 업체 (BFF). 소유권 검증 없이는 어떤 견적서도 내주지 않는다 (IDOR 방지).
+  const company = await getSessionCompany();
+  if (!company) return new Response('Unauthorized', { status: 401 });
 
-  const { data: quotation, error } = await supabase
+  const service = createServiceClient();
+  const { data: quotation, error } = await service
     .from('quotations')
-    .select('*, companies(name), quotation_items(product_id, label, quantity, unit_price, is_taxable, products(name, barcode))')
+    .select('*, company_id, companies(name), quotation_items(product_id, label, quantity, unit_price, is_taxable, products(name, barcode))')
     .eq('id', id)
-    .single();
+    .eq('company_id', company.id)
+    .maybeSingle();
 
   if (error || !quotation) {
     return new Response('견적서를 찾을 수 없습니다', { status: 404 });

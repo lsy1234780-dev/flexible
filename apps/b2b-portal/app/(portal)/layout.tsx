@@ -3,20 +3,14 @@ import { redirect } from 'next/navigation';
 import { signOut } from '@/actions/auth';
 import { Button } from '@/components/ui/button';
 import NavLinks from '@/components/NavLinks';
+import { getSessionCompany } from '@/lib/portal';
 
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
-
-  // 업체 정보 조회 — B2B 계정이 아니면(어드민 등) 즉시 로그아웃
-  const { data: company } = await supabase
-    .from('companies')
-    .select('name, status, contact_name')
-    .eq('auth_user_id', user.id)
-    .maybeSingle();
+  // 업체 정보 조회 (BFF) — B2B 계정이 아니면(어드민 등) 즉시 로그아웃
+  const company = await getSessionCompany();
 
   if (!company) {
+    const supabase = await createClient();
     await supabase.auth.signOut();
     redirect('/login');
   }
@@ -31,7 +25,7 @@ export default async function PortalLayout({ children }: { children: React.React
             <NavLinks />
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-500">{company?.name ?? user.email}</span>
+            <span className="text-sm text-gray-500">{company.name}</span>
             {company?.status === 'pending' && (
               <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">승인 대기중</span>
             )}

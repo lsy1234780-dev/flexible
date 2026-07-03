@@ -17,7 +17,7 @@ export default async function OrdersPage() {
     );
   }
 
-  const orders = await getOrders(company.id);
+  const orders = await getOrders();
 
   return (
     <div className="space-y-4">

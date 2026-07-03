@@ -80,7 +80,9 @@ export async function getCurrentUser() {
     return { id: 'preview', name: '홍길동', email: 'preview@example.com' };
   }
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  // getUser() 대신 getClaims(): 표시용 이름/이메일만 필요, RBAC 프레시니스 무관.
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims ? { id: data.claims.sub, email: data.claims.email, user_metadata: data.claims.user_metadata } : null;
   if (!user) return null;
   const name =
     (user.user_metadata?.full_name as string) ||
@@ -97,6 +99,8 @@ export async function getUserRole(): Promise<UserRole> {
     return { department: 'management', position: 'director', positionLevel: 99 };
   }
   const supabase = await createClient();
+  // getUser() 유지: app_metadata(부서/직급)를 읽는 RBAC 게이트 — 관리자가 방금 바꾼 권한이
+  // 세션 토큰 갱신 전에도 즉시 반영돼야 하므로 getClaims()(토큰에 박힌 값)로 바꾸지 않는다.
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Unauthorized');
 

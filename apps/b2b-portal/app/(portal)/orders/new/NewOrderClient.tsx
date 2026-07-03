@@ -13,13 +13,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { createOrder } from '@/actions/orders';
 
 interface Product { id: string; name: string; barcode: string; price: number; stock: number; }
-interface Company { id: string; name: string; }
-interface Props { company: Company; products: Product[]; initialProductId?: string; }
+interface Props { products: Product[]; initialProductId?: string; }
+// unit_price는 화면 합계 표시용일 뿐 — 실제 단가는 서버(createOrder)가 카탈로그에서 결정한다
 interface LineItem { product_id: string; quantity: number; unit_price: number; }
 
 const EMPTY: LineItem = { product_id: '', quantity: 1, unit_price: 0 };
 
-export default function NewOrderClient({ company, products, initialProductId }: Props) {
+export default function NewOrderClient({ products, initialProductId }: Props) {
   const router = useRouter();
   const [items, setItems] = useState<LineItem[]>(() => {
     if (initialProductId) {
@@ -61,7 +61,10 @@ export default function NewOrderClient({ company, products, initialProductId }: 
     }
 
     setLoading(true);
-    const result = await createOrder(company.id, items, notes || undefined);
+    const result = await createOrder(
+      items.map(({ product_id, quantity }) => ({ product_id, quantity })),
+      notes || undefined,
+    );
     setLoading(false);
 
     if (result.error) { toast.error(result.error); return; }

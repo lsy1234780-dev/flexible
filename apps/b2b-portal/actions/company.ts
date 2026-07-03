@@ -1,19 +1,13 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
+import { getSessionCompany } from '@/lib/portal';
+
+// B2B 세션은 RLS로 companies를 읽고 쓸 수 없으므로 BFF(세션 업체 스코프)로 처리한다.
 
 export async function updateContactInfo(formData: FormData) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: '로그인이 필요합니다' };
-
-  const { data: company } = await supabase
-    .from('companies')
-    .select('id')
-    .eq('auth_user_id', user.id)
-    .single();
-
+  const company = await getSessionCompany();
   if (!company) return { error: '업체를 찾을 수 없습니다' };
 
   const contact_name = String(formData.get('contact_name') ?? '').trim() || null;
@@ -21,7 +15,8 @@ export async function updateContactInfo(formData: FormData) {
   const contact_email = String(formData.get('contact_email') ?? '').trim() || null;
   const contact_position = String(formData.get('contact_position') ?? '').trim() || null;
 
-  const { error } = await supabase
+  const service = createServiceClient();
+  const { error } = await service
     .from('companies')
     .update({ contact_name, contact_phone, contact_email, contact_position })
     .eq('id', company.id);
@@ -33,15 +28,8 @@ export async function updateContactInfo(formData: FormData) {
 }
 
 export async function getMyCompany() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data } = await supabase
-    .from('companies')
-    .select('id, name, status, contact_name, contact_phone, contact_email, contact_position')
-    .eq('auth_user_id', user.id)
-    .single();
-
-  return data;
+  const company = await getSessionCompany();
+  if (!company) return null;
+  const { id, name, status, contact_name, contact_phone, contact_email, contact_position } = company;
+  return { id, name, status, contact_name, contact_phone, contact_email, contact_position };
 }

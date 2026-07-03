@@ -17,10 +17,11 @@ export const getCurrentWorkspaceId = cache(async (): Promise<string> => {
   }
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error('Unauthorized');
+  // getUser() 대신 getClaims(): 이 함수는 요청마다 캐시되어 매우 자주 호출됨(cache()).
+  // user.id만 필요하고 RBAC 프레시니스는 무관하므로 네트워크 왕복 없는 로컬 검증이 이득.
+  const { data: claimsData } = await supabase.auth.getClaims();
+  if (!claimsData?.claims) throw new Error('Unauthorized');
+  const user = { id: claimsData.claims.sub };
 
   // workspace_members.self_read 정책으로 본인 멤버십은 조회 가능
   const { data, error } = await supabase

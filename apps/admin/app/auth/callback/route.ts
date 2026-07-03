@@ -23,9 +23,9 @@ export async function GET(request: Request) {
   }
 
   // OAuth 로그인/가입: 워크스페이스 멤버십으로 분기 (멀티테넌시 격리)
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getUser() 대신 getClaims(): user.id만 필요, RBAC 프레시니스 무관.
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims ? { id: data.claims.sub } : null;
 
   if (user) {
     const { data: membership } = await supabase

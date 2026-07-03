@@ -380,28 +380,23 @@ docs/
 
 ## Git 워크플로우
 
-### 브랜치 전략
+### 브랜치 전략 (솔로 개발 — 2026-07 갱신)
 
-- **`main` 직접 푸시 절대 금지** — 반드시 브랜치 → PR → 머지
-- 브랜치 네이밍: `feat/기능명`, `fix/버그명`, `chore/작업명`, `refactor/대상`
-- 예시: `feat/crm-dashboard`, `fix/serial-status-sync`, `chore/migration-cleanup`
+> 이 프로젝트는 현재 **1인이 관리**한다. feature 브랜치 → PR → 머지 오버헤드가 오히려 방해가 되므로,
+> **개발은 `main`에서 직접 진행하고 `main`에 바로 커밋·푸시한다.** (별도 브랜치를 만들지 않는다.)
 
-### 고객별 브랜치 전략 (v1~)
+- **`main`에서 직접 작업하고 직접 푸시한다.** feature 브랜치·PR은 만들지 않는다.
+- 커밋은 여전히 **논리 단위로 분리**한다(아래 커밋 분할 규칙) — 브랜치가 없어도 히스토리는 깔끔하게.
+- 사람이 명시적으로 요청할 때만 커밋/푸시한다.
+- `--force-push` 금지, `main` 히스토리 강제 변경 금지.
 
-`main`은 공용 베이스(v1)이며, 고객별 커스텀은 별도 브랜치에서 관리합니다.
+### 고객별 브랜치 전략 (실제 고객이 여러 곳 생기면 — 아직 아님)
 
-```
-main (v1 공용 베이스)
-├── customer/company-a    ← A사 풀커스텀
-├── customer/company-b    ← B사 풀커스텀
-└── customer/company-c    ← C사 풀커스텀
-```
+> 아래는 **다수 고객 커스텀이 실제로 발생하는 시점**을 위한 향후 옵션이다. 현재는 해당 없음(위 솔로 main 워크플로우를 따른다).
 
-**규칙:**
-- 고객 브랜치 네이밍: `customer/고객명` (예: `customer/jungwook`, `customer/techsol`)
+`main`을 공용 베이스로 두고, 고객별 풀커스텀이 필요해지면 그때 `customer/고객명` 브랜치를 파서 관리한다.
 - 공통 기능/버그픽스는 `main`에서 작업 → 각 고객 브랜치로 `/sync-main`으로 머지
 - **고객 브랜치 → main 역머지 절대 금지** (커스텀이 공용에 섞임)
-- 릴리즈 태그: `v1.0.0`, `v1.1.0` 등으로 공용 베이스 마킹
 - 고객별 Supabase 프로젝트는 별도 (`.env.local`로 분리)
 
 ### 브랜치 전환 안전 규칙
@@ -444,7 +439,7 @@ docs: CLAUDE.md 권한 시스템 섹션 추가
 
 ### 커밋 분할 규칙
 
-하나의 PR에 여러 변경이 있을 때 **논리적 단위로 커밋을 분리**하세요:
+여러 변경이 섞였을 때 **논리적 단위로 커밋을 분리**하세요 (브랜치·PR이 없어도 히스토리는 이걸로 관리):
 
 1. **마이그레이션 SQL** — DB 스키마 변경은 별도 커밋
 2. **Server Action / API** — 백엔드 로직은 별도 커밋
@@ -459,17 +454,14 @@ feat(admin): 입고지시서 Server Action 구현
 feat(admin): 입고지시서 UI 페이지 구현
 ```
 
-### PR 규칙
+### PR 규칙 (현재 미사용 — 솔로 main 워크플로우)
 
-- PR 제목: 커밋 컨벤션과 동일한 형식
-- PR 본문: 변경 사항 요약 + 테스트 방법
-- 리뷰어 지정 필수 (1명 이상)
-- CI 통과 후 머지
-- **Squash merge 금지** — 커밋 히스토리 유지
+> 지금은 PR을 쓰지 않는다(위 브랜치 전략 참고). 향후 협업자가 생겨 PR을 도입하면 그때 적용:
+> PR 제목=커밋 컨벤션 형식, 본문=요약+테스트 방법, **Squash merge 금지**(히스토리 유지).
 
 ### 주의사항
 
-- `--force-push` 금지 (공유 브랜치에서)
+- `--force-push` 금지, `main` 히스토리 강제 변경 금지
 - `.env.local` 파일 커밋 금지 (`.gitignore`에 포함됨)
 - `node_modules/`, `.next/` 커밋 금지
 - 대용량 바이너리 파일은 가급적 피하기 (이미지/PDF는 Supabase Storage 사용)
@@ -536,7 +528,10 @@ feat(admin): 입고지시서 UI 페이지 구현
 | B2B | 업체 포털 (가입·카탈로그·발주, 어드민 발행 견적서 조회) — 업체의 직접 견적 요청은 미구현 | `apps/b2b-portal` |
 | 물류 | 입고·출고·집하 처리, 바코드 스캔, 처리 이력 (PWA 아님 — 일반 웹) | `apps/logistics` |
 | 권한 | 부서/직급 RBAC, 그룹 롤, 메뉴 접근 설정 | `/settings` |
-| 협업 | 팀 채팅(채널/DM/위젯/엔티티 멘션), 레코드 스레드(수주·제품·거래처·A/S 상세에 대화 부착), ERP 봇 이벤트, 통합 인박스 | `/chat`, `/inbox`, 각 상세 페이지 |
+| 협업 | 팀 채팅(채널/DM/위젯/엔티티 멘션), 레코드 스레드(수주·제품·거래처·A/S·견적·창고·입고·구매발주 상세에 대화 부착), ERP 봇 이벤트, 통합 인박스 | `/chat`, `/inbox`, 각 상세 페이지 |
+| 승인 | 승인 워크플로우 — 수주 확정·구매발주 확정 게이트(건별 지정 승인자, approvals 재사용) | `approvals` 테이블, `components/ApprovalPanel.tsx` |
+| 검색 | 글로벌 검색(Cmd/Ctrl+K) — moduleRegistry 기반 통합 레코드 검색 | `components/GlobalSearch.tsx`, `actions/search.ts` |
+| 대시보드 | 사업 데이터 전용 위젯 + 차트(매출/수주건수 추이 일별·월별, 거래처/제품 TOP5, 카테고리 비중; recharts) | `/dashboard` |
 
 ### DB 마이그레이션 파일
 
@@ -556,6 +551,7 @@ feat(admin): 입고지시서 UI 페이지 구현
 |------|------|------|
 | 도메인 맵 | `docs/architecture/domain-map.md` | 멀티 도메인 구조, serial_mode, 앱 분리 전략, 로드맵 |
 | 플랫폼 전략 | `docs/architecture/platform-strategy.md` | Tauri(데스크톱) + Capacitor(모바일) + 웹 전략 |
+| **HR 모듈(근태·경비)** | **`docs/architecture/HR.md`** | **근태·경비 설계 방향·경계·결정 기록. "우리=상류(기록), 급여SW=하류(계산)" 밸류체인. 급여계산·세무·감시는 안 함. 착수 전 필독** |
 | AI Agent 설계 | `docs/architecture/ai-agent-design.md` | inventory_ledger, 분석용 View, Agent API 설계 |
 | 현재 스키마 | `docs/schema/current-schema.md` | 전체 DB 테이블 레퍼런스 (마이그레이션 001~029) |
 | 확장 스키마 | `docs/schema/expansion-schema.md` | Supply Chain, CRM, 정산, RMA, 리퍼브, Analytics |

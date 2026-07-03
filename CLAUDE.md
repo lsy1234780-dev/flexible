@@ -212,6 +212,10 @@ company_products 레코드 있음?
 | `/lots` | LOT 관리 | ✅ |
 | `/warranty` | 출고현황 | ✅ |
 | `/profit-loss` | 손익계산서 | ✅ |
+| `/attendance` | 내 근태 (출퇴근·주간 집계·월 캘린더) | ✅ |
+| `/attendance/leaves` | 휴가 신청·잔여·승인 처리 (approvals 연동) | ✅ |
+| `/attendance/team` | 팀 현황·부재 현황판 (근태 관리자 전용) | ✅ |
+| `/attendance/policy` | 근태 정책·공휴일·휴가종류·연차부여·관리자 지정 | ✅ |
 
 ### apps/b2b-portal
 

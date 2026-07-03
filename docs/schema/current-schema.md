@@ -531,6 +531,93 @@ approvals (
 
 ---
 
+## Attendance (근태, 080~081)
+
+> 설계 배경·경계는 `docs/architecture/HR.md` 참조. 원칙: **기록·산수만, 법적 판정 없음.**
+> 관리자 = `attendance_managers`에 명시적으로 부여받은 사람 (+ workspace owner fallback).
+> 팀 조회·정책 쓰기 전부 anon+RLS(`is_attendance_manager()`)로 처리 — service role 안 씀.
+
+### attendance_managers (근태 관리자 — 명시적 권한 부여)
+
+```sql
+attendance_managers (
+  workspace_id uuid REFERENCES workspaces(id),
+  user_id uuid REFERENCES auth.users(id),
+  granted_by uuid, granted_by_name text,
+  created_at timestamptz,
+  PRIMARY KEY (workspace_id, user_id)
+)
+-- helper: is_attendance_manager(p_ws) — 등록자 or workspace owner(락아웃 방지)
+```
+
+### attendance_policy (근태 정책 — workspace당 1행, 값은 회사가 입력)
+
+```sql
+attendance_policy (
+  workspace_id uuid PRIMARY KEY,
+  punch_method text DEFAULT 'button',   -- 'button'|'ip'|'gps' (v1은 button만 사용)
+  allowed_ips text[], gps_lat/gps_lng/gps_radius_m,  -- v2 예비
+  standard_start time DEFAULT '09:00', standard_end time DEFAULT '18:00',
+  break_minutes int DEFAULT 60,
+  work_days int[] DEFAULT '{1,2,3,4,5}',  -- 0=일~6=토
+  weekly_max_minutes int,               -- 초과 시 "알림"만 (판정 아님). null=알림 없음
+  updated_by, updated_at
+)
+```
+
+### attendance_records (출퇴근 기록 — 하루 한 행)
+
+```sql
+attendance_records (
+  id uuid PK, workspace_id, user_id, work_date date,
+  clock_in_at timestamptz, clock_out_at timestamptz,
+  work_type text DEFAULT 'office',      -- 'office'|'remote'|'field'
+  worked_minutes int,                   -- (out-in)-break 산수 결과
+  memo text, created_at, updated_at,
+  UNIQUE(workspace_id, user_id, work_date)
+)
+-- RLS: 본인 행 + 관리자는 팀 전체 select/update. insert는 본인만.
+```
+
+### holidays (공휴일 — 회사가 직접 등록)
+
+```sql
+holidays (
+  id uuid PK, workspace_id, holiday_date date, name text,
+  UNIQUE(workspace_id, holiday_date)
+)
+```
+
+### leave_types / leave_requests / leave_balances (휴가)
+
+```sql
+leave_types (       -- 시드: 연차/반차/병가/경조사 (seed_default_leave_types, 멱등)
+  id uuid PK, workspace_id, name,
+  deducts_annual bool DEFAULT true,     -- 연차 차감 여부
+  day_weight numeric DEFAULT 1,         -- 반차 = 0.5
+  sort_order int
+)
+
+leave_requests (
+  id uuid PK, workspace_id, user_id, user_name(스냅샷),
+  leave_type_id, start_date, end_date,
+  days numeric,                         -- 근무일 산수 결과 (주말·공휴일 제외 × day_weight)
+  reason text,
+  status text DEFAULT 'pending'         -- pending|approved|rejected|cancelled
+)
+-- 승인: approvals 재사용(entity_type='leave').
+-- 트리거 approvals_sync_leave: 승인/반려 결정 시 status 자동 동기화.
+-- 트리거 leave_requests_guard: 요청자는 pending→cancelled만 가능 (승인 바꿔치기 차단).
+-- RLS: select는 워크스페이스 멤버 전체 (부재 현황판·충돌 표시 — approvals와 같은 투명성).
+
+leave_balances (    -- 부여량은 관리자 입력. used는 저장 안 함(승인된 신청에서 계산)
+  workspace_id, user_id, year, granted numeric, note,
+  PRIMARY KEY (workspace_id, user_id, year)
+)
+```
+
+---
+
 ## 마이그레이션 파일 목록
 
 | # | 파일 | 내용 |
@@ -614,5 +701,7 @@ approvals (
 | 077 | approvals | 승인 워크플로우 테이블 + purchase_orders.status(draft/approved) 추가 |
 | 078 | approvals_rls_hardening | 승인자 워크스페이스 멤버 검증(INSERT) + 결정 불변성/전이 트리거(UPDATE) |
 | 079 | approvals_one_pending | 한 레코드당 pending 승인 요청 1건 제한 (partial unique index) |
+| 080 | attendance_core | 근태 코어: attendance_managers(명시적 권한 부여)/policy/records/holidays + is_attendance_manager |
+| 081 | attendance_leaves | 휴가: leave_types(시드)/requests/balances + approvals 동기화·가드 트리거 |
 
-**다음 마이그레이션:** `080_xxx.sql`
+**다음 마이그레이션:** `082_xxx.sql`

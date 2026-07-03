@@ -6,6 +6,7 @@ import {
   Package, ClipboardList, Building2, FileText, ShoppingCart,
   Tags, FolderTree, Menu, X, ChevronDown, ExternalLink, ClipboardCheck, Settings, Wrench, Layers,
   PanelLeftClose, PanelLeftOpen, LogOut, PackageCheck, Warehouse, Search, ShieldCheck, TrendingUp, Target, MessageSquare, LayoutDashboard, Inbox,
+  Clock, CalendarDays, Users, SlidersHorizontal,
 } from 'lucide-react';
 import InventoryFinderModal from '@/components/InventoryFinderModal';
 import { useMemo, useState, useTransition } from 'react';
@@ -25,6 +26,7 @@ interface NavItem {
   icon: React.ComponentType<{ size?: number }>;
   exact?: boolean;
   external?: boolean;
+  managerOnly?: boolean; // 근태 관리자(attendance_managers)에게만 노출
 }
 
 interface NavGroup {
@@ -82,6 +84,15 @@ const allNavGroups: NavGroup[] = [
     ],
   },
   {
+    label: '근태',
+    items: [
+      { href: '/attendance', label: '내 근태', icon: Clock, exact: true },
+      { href: '/attendance/leaves', label: '휴가', icon: CalendarDays, exact: true },
+      { href: '/attendance/team', label: '팀 현황', icon: Users, exact: true, managerOnly: true },
+      { href: '/attendance/policy', label: '근태 설정', icon: SlidersHorizontal, exact: true, managerOnly: true },
+    ],
+  },
+  {
     label: '경영지원',
     items: [
       { href: '/profit-loss', label: '손익계산서', icon: TrendingUp },
@@ -97,9 +108,10 @@ interface Props {
   superAdminMinLevel?: number;
   enabledModules?: string[];
   userName?: string;
+  attendanceManager?: boolean;
 }
 
-export default function Sidebar({ role, menuRules, departmentLabels = {}, positionLabels = {}, superAdminMinLevel, enabledModules, userName = '사용자' }: Props) {
+export default function Sidebar({ role, menuRules, departmentLabels = {}, positionLabels = {}, superAdminMinLevel, enabledModules, userName = '사용자', attendanceManager = false }: Props) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -121,11 +133,12 @@ export default function Sidebar({ role, menuRules, departmentLabels = {}, positi
         items: group.items.filter(
           (item) =>
             isMenuModuleEnabled(item.href, enabledModules) &&
-            canAccessMenu(item.href, role, menuRules, superAdminMinLevel),
+            canAccessMenu(item.href, role, menuRules, superAdminMinLevel) &&
+            (!item.managerOnly || attendanceManager),
         ),
       }))
       .filter((group) => group.items.length > 0);
-  }, [role, menuRules, superAdminMinLevel, enabledModules]);
+  }, [role, menuRules, superAdminMinLevel, enabledModules, attendanceManager]);
 
   function isActive(href: string, exact?: boolean) {
     if (exact) return pathname === href;

@@ -100,6 +100,14 @@ export const ENTITY_REGISTRY: EntityDef[] = [
     chip: 'bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-100 border-fuchsia-200',
   },
   {
+    // 휴가 신청 — 승인(approvals entity_type='leave')·인박스 링크·검색용.
+    // 개별 상세 페이지가 없어 목록 페이지로 이동.
+    type: 'leave', label: '휴가', module: 'attendance',
+    source: { table: 'leave_requests', labelColumns: ['user_name'], searchColumns: ['user_name', 'reason'], orderColumn: 'created_at' },
+    href: () => '/attendance/leaves',
+    chip: 'bg-sky-50 text-sky-700 hover:bg-sky-100 border-sky-200',
+  },
+  {
     type: 'as', label: 'A/S', module: 'service',
     source: { table: 'as_requests', labelColumns: ['number', 'customer_name'], searchColumns: ['number', 'customer_name'], orderColumn: 'created_at' },
     href: (id) => `/as/${id}`,

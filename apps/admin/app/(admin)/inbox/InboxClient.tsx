@@ -8,13 +8,14 @@ import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
 import {
   Inbox, AtSign, MessagesSquare, AlertTriangle, Hash, User, Bot, ChevronRight,
-  TreePalm, CircleMinus, CalendarDays, CircleEllipsis,
+  TreePalm, CircleMinus, CalendarDays, CircleEllipsis, Receipt,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { entityHref, entityChipClass, ENTITY_LABEL } from '@/lib/entityLink';
 import type { MyMention, RecordActivity } from '@/actions/chat';
 import type { UrgentItem } from '@/actions/dashboard';
 import type { TeamSnapshot } from '@/actions/presence';
+import type { MyExpenseFlowItem } from '@/actions/expenses';
 import InboxAttendance, { type InboxAttendanceData } from './InboxAttendance';
 
 // 사람 이름 → 항상 같은 색 아바타 (순수 표시용 — 데이터/구조는 안 건드림)
@@ -50,10 +51,11 @@ interface Props {
   urgent: UrgentItem[];
   snapshot: TeamSnapshot;
   attendance: InboxAttendanceData | null;
+  myExpenses: MyExpenseFlowItem[];
   chatEnabled: boolean;
 }
 
-export default function InboxClient({ mentions, activity, urgent, snapshot, attendance, chatEnabled }: Props) {
+export default function InboxClient({ mentions, activity, urgent, snapshot, attendance, myExpenses, chatEnabled }: Props) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('all');
 
@@ -159,6 +161,45 @@ export default function InboxClient({ mentions, activity, urgent, snapshot, atte
 
       {/* 내 근태 — 로그인 후 첫 화면에서 바로 출퇴근 */}
       {attendance && <InboxAttendance data={attendance} />}
+
+      {/* 내 경비 진행 — 승인 상태에 따라 유기적으로 표시(결재 대기·지급 대기), 완료되면 사라짐 */}
+      {myExpenses.length > 0 && (
+        <div className="rounded-xl border bg-white p-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">
+              <Receipt size={13} /> 내 경비 진행
+            </p>
+            <button
+              onClick={() => router.push('/expenses')}
+              className="inline-flex items-center gap-0.5 text-xs font-medium text-gray-500 hover:text-gray-800"
+            >
+              내 경비 <ChevronRight size={13} />
+            </button>
+          </div>
+          <div className="space-y-1.5">
+            {myExpenses.map((e) => (
+              <button
+                key={e.id}
+                onClick={() => router.push(`/expenses/${e.id}`)}
+                className="flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left hover:bg-gray-50 transition-colors"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium text-gray-900">{e.title}</span>
+                  <span className="block text-xs text-gray-400">{e.total_amount.toLocaleString()}원</span>
+                </span>
+                <span className={cn(
+                  'flex-shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium',
+                  e.stage === 'pending'
+                    ? 'border-amber-200 bg-amber-50 text-amber-700'
+                    : 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                )}>
+                  {e.label}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 오늘의 팀 — 휴가·자리비움·다가오는 휴가·진행 중 결재 한눈에 */}
       {(snapshot.onLeave.length > 0 || snapshot.away.length > 0 || snapshot.upcoming.length > 0 || snapshot.pending.length > 0) && (

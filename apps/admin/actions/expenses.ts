@@ -583,6 +583,47 @@ export async function rollbackPayment(claimId: string) {
   return { success: true };
 }
 
+// ─── 내 경비 진행 상황 (인박스 카드 — 승인 상태에 따라 유기적으로 뜨고 사라짐) ───
+// 진행 중인 것만: 결재 대기(pending) / 승인됐지만 아직 미지급(approved+unpaid).
+// 지급되면 '수령 확인'(getMyAwaitingConfirm)이 인박스 긴급으로 넘겨받고, 확인·마감되면 전부 사라짐.
+// draft(작성 중)·반려·취소·완료는 여기 안 뜬다.
+
+export interface MyExpenseFlowItem {
+  id: string;
+  title: string;
+  total_amount: number;
+  stage: 'pending' | 'approved_unpaid';
+  label: string;
+}
+
+export async function getMyExpenseFlow(): Promise<MyExpenseFlowItem[]> {
+  if (process.env.PREVIEW_MODE === 'true') return [];
+  try {
+    const supabase = await createClient();
+    const me = await getCurrentUser();
+    if (!me) return [];
+
+    const { data } = await supabase
+      .from('expense_claims')
+      .select('id, title, total_amount, status, settle_status, claim_kind')
+      .eq('user_id', me.id)
+      .or('status.eq.pending,and(status.eq.approved,settle_status.eq.unpaid)')
+      .order('created_at', { ascending: false });
+
+    const items: MyExpenseFlowItem[] = [];
+    for (const c of data ?? []) {
+      if (c.status === 'pending') {
+        items.push({ id: c.id, title: c.title, total_amount: Number(c.total_amount), stage: 'pending', label: '결재 대기' });
+      } else if (c.status === 'approved' && c.settle_status === 'unpaid' && c.claim_kind === 'reimbursement') {
+        items.push({ id: c.id, title: c.title, total_amount: Number(c.total_amount), stage: 'approved_unpaid', label: '승인 · 지급 대기' });
+      }
+    }
+    return items;
+  } catch {
+    return [];
+  }
+}
+
 // ─── 내 확인 대기 (인박스·내 경비 배너용) ───
 
 export async function getMyAwaitingConfirm(): Promise<ExpenseClaim[]> {

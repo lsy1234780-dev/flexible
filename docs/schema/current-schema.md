@@ -621,6 +621,28 @@ leave_balances (    -- 부여량은 관리자 입력. used는 저장 안 함(승
 )
 ```
 
+### overtime_requests (초과근무 사전 신청, 090)
+
+```sql
+overtime_requests (
+  id uuid PK, workspace_id, user_id, user_name(스냅샷),
+  work_date date, start_at timestamptz, end_at timestamptz,  -- 시작~종료 시각 (자정 넘김 가능)
+  planned_minutes int CHECK (> 0),      -- 서버 계산 (end-start)
+  reason text,
+  status text DEFAULT 'pending'         -- pending|approved|rejected|cancelled
+)
+-- 승인: approvals 재사용(entity_type='overtime'). 트리거 approvals_sync_overtime가 동기화,
+--       overtime_requests_guard가 요청자 바꿔치기 차단(pending→cancelled만).
+-- RLS: select 멤버 전체(투명성), insert/update 본인만.
+-- 철칙: 신청·승인 기록과 분 산수만 — 수당 계산·"사전승인 없으면 불인정" 강제 없음.
+```
+
+### CSV export (관리자 전용 Route Handler)
+
+- `/api/attendance/export?year&month&type=daily|summary|leaves|overtime` — 근태 관리자만
+- `/api/expenses/export?year&month` — 재무 담당만 (지출일 기준 라인 단위)
+- UTF-8 BOM 포함(엑셀 한글 깨짐 방지, `lib/csv.ts`), 분 단위 정수 — 급여SW 임포트용. 수당 계산 없음.
+
 ---
 
 ## Expenses (경비, 083~084)
@@ -815,5 +837,6 @@ member_statuses (            -- 자리비움/외근 등 본인 설정 상태
 | 087 | team_clock_states | get_team_clock_states() — 출퇴근 "상태"만(시각 비공개) 팀 전체 노출, 채팅 상시 배지용 |
 | 088 | attendance_reclock | attendance_records.session_start_at 추가 — 하루 안 재출근(퇴근 후 재복귀) 지원 |
 | 089 | attendance_type_minutes | attendance_records.type_minutes(jsonb) 추가 — 사무실/재택/외근 형태별 시간 개별 집계 |
+| 090 | overtime | 초과근무 사전 신청(시작~종료 시각) + approvals 동기화·가드 트리거 |
 
-**다음 마이그레이션:** `090_xxx.sql`
+**다음 마이그레이션:** `091_xxx.sql`

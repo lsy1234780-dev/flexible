@@ -13,22 +13,54 @@ import { getCurrentUser } from '@/actions/auth';
 import { getWorkspaceMembers } from '@/actions/chat';
 import { getEnabledModules } from '@/actions/modules';
 
+export type PresenceKind = 'leave' | 'status' | 'working' | 'done' | 'not_in';
+
 export interface PresenceInfo {
-  kind: 'leave' | 'status';
-  label: string; // 휴가면 휴가 종류명(연차 등), 상태면 본인이 적은 문구
+  kind: PresenceKind;
+  label: string; // 휴가=종류명, 상태=본인 문구, 나머지='업무 중'/'퇴근'/'출근 전'
 }
 
 export type PresenceMap = Record<string, PresenceInfo>;
 
-// user_id → 부재 정보. 부재 아닌 사람은 키 자체가 없다.
+// user_id → 상태. 이벤트가 있을 때만이 아니라 "평상시" 상태도 항상 표시:
+//   출근 전(기록 없음) → 업무 중(출근) → 퇴근(퇴근 찍음). 근무일이 아니면 기본 배지 생략.
+// 우선순위: 휴가(승인 자동) > 자리비움/외근(본인 설정) > 출근 상태.
+// attendance 모듈이 꺼진 워크스페이스는 본인 설정 상태만 표시된다 (모듈 유기성).
 export async function getPresenceMap(): Promise<PresenceMap> {
   if (process.env.PREVIEW_MODE === 'true') return {};
-  const supabase = await createClient();
-  const today = dayjs().format('YYYY-MM-DD');
   const map: PresenceMap = {};
+  const today = dayjs().format('YYYY-MM-DD');
 
-  // ① 자리비움/외근 (오늘 설정분만)
   try {
+    const supabase = await createClient();
+    const attendanceOn = (await getEnabledModules()).includes('attendance');
+
+    // ① 출근 상태 기본값 (attendance ON + 오늘이 근무일일 때) — 전 멤버 '출근 전'에서 시작
+    if (attendanceOn) {
+      const ws = await getCurrentWorkspaceId();
+      const [{ data: policy }, { data: holiday }] = await Promise.all([
+        supabase.from('attendance_policy').select('work_days').eq('workspace_id', ws).maybeSingle(),
+        supabase.from('holidays').select('id').eq('holiday_date', today).maybeSingle(),
+      ]);
+      const workDays: number[] = policy?.work_days ?? [1, 2, 3, 4, 5];
+      const isWorkday = workDays.includes(dayjs().day()) && !holiday;
+
+      if (isWorkday) {
+        const me = await getCurrentUser();
+        const members = await getWorkspaceMembers();
+        for (const id of [...(me ? [me.id] : []), ...members.map((m) => m.user_id)]) {
+          map[id] = { kind: 'not_in', label: '출근 전' };
+        }
+      }
+      // 출퇴근 상태만 노출하는 RPC (시각은 비공개 — 087). 주말에 출근 찍은 사람도 '업무 중'으로 표시.
+      const { data: clocks } = await supabase.rpc('get_team_clock_states');
+      for (const c of (clocks ?? []) as { user_id: string; state: string }[]) {
+        if (c.state === 'working') map[c.user_id] = { kind: 'working', label: '업무 중' };
+        else if (c.state === 'done') map[c.user_id] = { kind: 'done', label: '퇴근' };
+      }
+    }
+
+    // ② 자리비움/외근 (본인 설정, 오늘) — 출근 상태를 덮는다
     const { data: statuses } = await supabase
       .from('member_statuses')
       .select('user_id, label')
@@ -36,14 +68,9 @@ export async function getPresenceMap(): Promise<PresenceMap> {
     for (const s of statuses ?? []) {
       map[s.user_id] = { kind: 'status', label: s.label };
     }
-  } catch {
-    // 테이블 미적용 환경에서도 채팅이 죽지 않게
-  }
 
-  // ② 휴가 (승인분이 오늘을 덮으면) — 자리비움을 덮어쓴다.
-  //    attendance 모듈이 꺼진 워크스페이스는 휴가 배지도 꺼진다 (모듈 유기성).
-  try {
-    if ((await getEnabledModules()).includes('attendance')) {
+    // ③ 휴가 (승인분이 오늘을 덮으면) — 전부 덮는다
+    if (attendanceOn) {
       const { data: leaves } = await supabase
         .from('leave_requests')
         .select('user_id, leave_types(name)')
@@ -56,7 +83,7 @@ export async function getPresenceMap(): Promise<PresenceMap> {
       }
     }
   } catch {
-    // 휴가 배지 실패가 채팅을 막지 않게 무시
+    // 부재 표시 실패가 채팅을 막지 않게 무시
   }
 
   return map;

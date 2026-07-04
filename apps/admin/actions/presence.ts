@@ -10,6 +10,7 @@ import dayjs from 'dayjs';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { getCurrentUser } from '@/actions/auth';
+import { getEnabledModules } from '@/actions/modules';
 
 export interface PresenceInfo {
   kind: 'leave' | 'status';
@@ -38,20 +39,23 @@ export async function getPresenceMap(): Promise<PresenceMap> {
     // 테이블 미적용 환경에서도 채팅이 죽지 않게
   }
 
-  // ② 휴가 (승인분이 오늘을 덮으면) — 자리비움을 덮어쓴다
+  // ② 휴가 (승인분이 오늘을 덮으면) — 자리비움을 덮어쓴다.
+  //    attendance 모듈이 꺼진 워크스페이스는 휴가 배지도 꺼진다 (모듈 유기성).
   try {
-    const { data: leaves } = await supabase
-      .from('leave_requests')
-      .select('user_id, leave_types(name)')
-      .eq('status', 'approved')
-      .lte('start_date', today)
-      .gte('end_date', today);
-    for (const l of leaves ?? []) {
-      const lt = l.leave_types as unknown as { name: string } | null;
-      map[l.user_id] = { kind: 'leave', label: lt?.name ?? '휴가' };
+    if ((await getEnabledModules()).includes('attendance')) {
+      const { data: leaves } = await supabase
+        .from('leave_requests')
+        .select('user_id, leave_types(name)')
+        .eq('status', 'approved')
+        .lte('start_date', today)
+        .gte('end_date', today);
+      for (const l of leaves ?? []) {
+        const lt = l.leave_types as unknown as { name: string } | null;
+        map[l.user_id] = { kind: 'leave', label: lt?.name ?? '휴가' };
+      }
     }
   } catch {
-    // attendance 미사용 워크스페이스면 휴가 배지만 없음
+    // 휴가 배지 실패가 채팅을 막지 않게 무시
   }
 
   return map;

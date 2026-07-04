@@ -570,13 +570,17 @@ attendance_policy (
 ```sql
 attendance_records (
   id uuid PK, workspace_id, user_id, work_date date,
-  clock_in_at timestamptz, clock_out_at timestamptz,
+  clock_in_at timestamptz,              -- 그날 최초 출근 (표시용)
+  clock_out_at timestamptz,             -- 마지막 퇴근 (재출근 시 null로 복귀)
+  session_start_at timestamptz,         -- 현재 열린 세션 시작 (088) — null이면 근무 중 아님
   work_type text DEFAULT 'office',      -- 'office'|'remote'|'field'
-  worked_minutes int,                   -- (out-in)-break 산수 결과
+  worked_minutes int,                   -- 세션 근무시간 누적 합계 (첫 퇴근 시 휴게 1회 차감)
   memo text, created_at, updated_at,
   UNIQUE(workspace_id, user_id, work_date)
 )
 -- RLS: 본인 행 + 관리자는 팀 전체 select/update. insert는 본인만.
+-- 재출근(088): 하루 안에서 퇴근 후 다시 출근 가능. clockIn이 session_start_at을 새로 찍고
+--   clock_out_at을 null로 되돌림 → 그 시점부터 재산정, clockOut이 세션 근무분을 worked_minutes에 가산.
 ```
 
 ### holidays (공휴일 — 회사가 직접 등록)
@@ -808,5 +812,6 @@ member_statuses (            -- 자리비움/외근 등 본인 설정 상태
 | 085 | member_presence | 부재 표시: member_statuses(본인 설정, 당일만) + get_my_channels에 partner_id 추가 |
 | 086 | expense_approver_access | 경비 결재자 열람 — 건별 지정 결재자에게 헤더/라인/영수증 읽기 허용 (승인 진행 가능하게) |
 | 087 | team_clock_states | get_team_clock_states() — 출퇴근 "상태"만(시각 비공개) 팀 전체 노출, 채팅 상시 배지용 |
+| 088 | attendance_reclock | attendance_records.session_start_at 추가 — 하루 안 재출근(퇴근 후 재복귀) 지원 |
 
-**다음 마이그레이션:** `088_xxx.sql`
+**다음 마이그레이션:** `089_xxx.sql`

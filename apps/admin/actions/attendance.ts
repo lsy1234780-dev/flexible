@@ -30,10 +30,11 @@ export interface AttendanceRecord {
   id: string;
   user_id: string;
   work_date: string;
-  clock_in_at: string | null;
-  clock_out_at: string | null;
+  clock_in_at: string | null;      // 그날 최초 출근 (표시용)
+  clock_out_at: string | null;     // 마지막 퇴근 (표시용, 재출근 시 null로 복귀)
+  session_start_at: string | null; // 현재 열린 세션 시작 — null이면 근무 중 아님
   work_type: 'office' | 'remote' | 'field';
-  worked_minutes: number | null;
+  worked_minutes: number | null;   // 세션 근무시간 누적 합계
   memo: string | null;
 }
 
@@ -194,13 +195,23 @@ export async function clockIn(workType: 'office' | 'remote' | 'field' = 'office'
   if (!me) return { error: '로그인이 필요합니다' };
 
   const today = dayjs().format('YYYY-MM-DD');
+  const now = new Date().toISOString();
   const existing = await getMyTodayRecord();
-  if (existing?.clock_in_at) return { error: '이미 출근 처리되었습니다' };
+
+  // 이미 근무 중(열린 세션 존재)이면 막는다
+  if (existing?.session_start_at) return { error: '이미 출근 중입니다' };
 
   if (existing) {
+    // 재출근: 최초 출근시각(clock_in_at)은 그대로 두고, 새 세션만 연다. 이 시점부터 다시 산정.
     const { error } = await supabase
       .from('attendance_records')
-      .update({ clock_in_at: new Date().toISOString(), work_type: workType, updated_at: new Date().toISOString() })
+      .update({
+        session_start_at: now,
+        clock_out_at: null,               // 다시 근무 중 상태로
+        clock_in_at: existing.clock_in_at ?? now,
+        work_type: workType,
+        updated_at: now,
+      })
       .eq('id', existing.id);
     if (error) return { error: error.message };
   } else {
@@ -208,7 +219,8 @@ export async function clockIn(workType: 'office' | 'remote' | 'field' = 'office'
       workspace_id: ws,
       user_id: me.id,
       work_date: today,
-      clock_in_at: new Date().toISOString(),
+      clock_in_at: now,
+      session_start_at: now,
       work_type: workType,
     });
     if (error) {
@@ -217,6 +229,7 @@ export async function clockIn(workType: 'office' | 'remote' | 'field' = 'office'
     }
   }
   revalidatePath('/attendance');
+  revalidatePath('/inbox');
   return { success: true };
 }
 
@@ -226,25 +239,31 @@ export async function clockOut() {
   if (!me) return { error: '로그인이 필요합니다' };
 
   const record = await getMyTodayRecord();
-  if (!record?.clock_in_at) return { error: '출근 기록이 없습니다' };
-  if (record.clock_out_at) return { error: '이미 퇴근 처리되었습니다' };
+  if (!record?.session_start_at) return { error: '출근 기록이 없습니다' };
 
-  // 산수: (퇴근 - 출근) - 휴게. "판정"이 아니라 뺄셈 결과 저장.
+  // 이번 세션 근무시간 = (지금 - 세션 시작). 첫 퇴근이면 휴게 1회 차감, 재출근분은 그대로 가산.
+  // "판정"이 아니라 뺄셈·덧셈 결과 저장.
   const policy = await getAttendancePolicy();
   const now = new Date();
-  const rawMinutes = Math.floor((now.getTime() - new Date(record.clock_in_at).getTime()) / 60000);
-  const workedMinutes = Math.max(0, rawMinutes - policy.break_minutes);
+  const sessionMinutes = Math.floor((now.getTime() - new Date(record.session_start_at).getTime()) / 60000);
+  const isFirstClockOut = record.worked_minutes == null;
+  const addedMinutes = isFirstClockOut
+    ? Math.max(0, sessionMinutes - policy.break_minutes) // 휴게는 그날 1회만 차감
+    : sessionMinutes;
+  const total = (record.worked_minutes ?? 0) + addedMinutes;
 
   const { error } = await supabase
     .from('attendance_records')
     .update({
       clock_out_at: now.toISOString(),
-      worked_minutes: workedMinutes,
+      session_start_at: null,             // 세션 닫음
+      worked_minutes: total,
       updated_at: now.toISOString(),
     })
     .eq('id', record.id);
   if (error) return { error: error.message };
   revalidatePath('/attendance');
+  revalidatePath('/inbox');
   return { success: true };
 }
 

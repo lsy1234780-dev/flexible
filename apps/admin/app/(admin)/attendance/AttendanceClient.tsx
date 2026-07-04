@@ -7,7 +7,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
 import { toast } from 'sonner';
-import { Clock, LogIn, LogOut, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Clock, LogIn, LogOut, RotateCcw, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -52,13 +52,13 @@ export default function AttendanceClient({
     startTransition(async () => {
       const res = await clockIn(workType);
       if (res?.error) { toast.error(res.error); return; }
-      toast.success('출근 처리되었습니다');
+      toast.success(hasStarted ? '재출근 처리되었습니다' : '출근 처리되었습니다');
       router.refresh();
     });
   }
 
   function handleClockOut() {
-    if (!confirm('퇴근 처리하시겠습니까?')) return;
+    if (!confirm('퇴근 처리하시겠습니까? (필요하면 재출근할 수 있습니다)')) return;
     startTransition(async () => {
       const res = await clockOut();
       if (res?.error) { toast.error(res.error); return; }
@@ -96,7 +96,8 @@ export default function AttendanceClient({
     ...Array.from({ length: daysInMonth }, (_, i) => month.date(i + 1).format('YYYY-MM-DD')),
   ];
 
-  const isWorkingToday = !!today?.clock_in_at && !today?.clock_out_at;
+  const isWorkingToday = !!today?.session_start_at; // 현재 열린 세션 = 근무 중
+  const hasStarted = !!today?.clock_in_at;           // 오늘 한 번이라도 출근함
 
   return (
     <div className="space-y-4 max-w-4xl">
@@ -120,19 +121,25 @@ export default function AttendanceClient({
             <div>
               <p className="font-semibold text-gray-900">{dayjs().format('M월 D일')} ({DAY_LABELS[dayjs().day()]})</p>
               <p className="text-sm text-gray-500">
-                {today?.clock_in_at ? (
+                {!hasStarted && '아직 출근 전입니다'}
+                {hasStarted && (
                   <>
-                    출근 {dayjs(today.clock_in_at).format('HH:mm')}
-                    {today.clock_out_at && <> · 퇴근 {dayjs(today.clock_out_at).format('HH:mm')} · 근무 {fmtMinutes(today.worked_minutes)}</>}
-                    {!today.clock_out_at && <> · 근무 중 ({WORK_TYPE_LABEL[today.work_type]})</>}
+                    출근 {dayjs(today!.clock_in_at!).format('HH:mm')}
+                    {isWorkingToday
+                      ? <> · 근무 중 ({WORK_TYPE_LABEL[today!.work_type]})</>
+                      : <> · 퇴근 {dayjs(today!.clock_out_at!).format('HH:mm')} · 근무 {fmtMinutes(today!.worked_minutes)}</>}
                   </>
-                ) : '아직 출근 전입니다'}
+                )}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {!today?.clock_in_at && (
+            {isWorkingToday ? (
+              <Button onClick={handleClockOut} disabled={isPending} variant="outline" className="h-11 px-5">
+                <LogOut size={16} className="mr-1.5" /> 퇴근
+              </Button>
+            ) : (
               <>
                 <Select value={workType} onValueChange={(v) => setWorkType(v as typeof workType)}>
                   <SelectTrigger className="w-[100px] h-11"><SelectValue /></SelectTrigger>
@@ -143,17 +150,11 @@ export default function AttendanceClient({
                   </SelectContent>
                 </Select>
                 <Button onClick={handleClockIn} disabled={isPending} className="h-11 px-5">
-                  <LogIn size={16} className="mr-1.5" /> 출근
+                  {hasStarted
+                    ? <><RotateCcw size={16} className="mr-1.5" /> 재출근</>
+                    : <><LogIn size={16} className="mr-1.5" /> 출근</>}
                 </Button>
               </>
-            )}
-            {isWorkingToday && (
-              <Button onClick={handleClockOut} disabled={isPending} variant="outline" className="h-11 px-5">
-                <LogOut size={16} className="mr-1.5" /> 퇴근
-              </Button>
-            )}
-            {today?.clock_out_at && (
-              <span className="text-sm text-gray-400">오늘 근무 종료</span>
             )}
           </div>
         </div>

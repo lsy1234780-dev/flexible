@@ -7,7 +7,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
 import { toast } from 'sonner';
-import { Clock, LogIn, LogOut, AlertTriangle, ChevronRight } from 'lucide-react';
+import { Clock, LogIn, LogOut, RotateCcw, AlertTriangle, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -33,19 +33,20 @@ export default function InboxAttendance({ data }: { data: InboxAttendanceData })
   const [workType, setWorkType] = useState<'office' | 'remote' | 'field'>('office');
 
   const { policy, today, weekly } = data;
-  const isWorkingToday = !!today?.clock_in_at && !today?.clock_out_at;
+  const isWorking = !!today?.session_start_at;   // 현재 열린 세션 = 근무 중
+  const hasStarted = !!today?.clock_in_at;        // 오늘 한 번이라도 출근함
 
   function handleClockIn() {
     startTransition(async () => {
       const res = await clockIn(workType);
       if (res?.error) { toast.error(res.error); return; }
-      toast.success('출근 처리되었습니다');
+      toast.success(hasStarted ? '재출근 처리되었습니다' : '출근 처리되었습니다');
       router.refresh();
     });
   }
 
   function handleClockOut() {
-    if (!confirm('퇴근 처리하시겠습니까?')) return;
+    if (!confirm('퇴근 처리하시겠습니까? (필요하면 재출근할 수 있습니다)')) return;
     startTransition(async () => {
       const res = await clockOut();
       if (res?.error) { toast.error(res.error); return; }
@@ -61,7 +62,7 @@ export default function InboxAttendance({ data }: { data: InboxAttendanceData })
         <div className="flex items-center gap-3">
           <div className={cn(
             'flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full',
-            isWorkingToday ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-100 text-gray-500',
+            isWorking ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-100 text-gray-500',
           )}>
             <Clock size={22} />
           </div>
@@ -70,21 +71,26 @@ export default function InboxAttendance({ data }: { data: InboxAttendanceData })
               오늘 {dayjs().format('M월 D일')} ({DAY_LABELS[dayjs().day()]})
             </p>
             <p className="text-sm text-gray-500">
-              {today?.clock_in_at ? (
+              {!hasStarted && '아직 출근 전입니다'}
+              {hasStarted && (
                 <>
-                  출근 {dayjs(today.clock_in_at).format('HH:mm')}
-                  {today.clock_out_at
-                    ? <> · 퇴근 {dayjs(today.clock_out_at).format('HH:mm')} · 근무 {fmtMinutes(today.worked_minutes)}</>
-                    : <> · 근무 중 ({WORK_TYPE_LABEL[today.work_type]})</>}
+                  출근 {dayjs(today!.clock_in_at!).format('HH:mm')}
+                  {isWorking
+                    ? <> · 근무 중 ({WORK_TYPE_LABEL[today!.work_type]})</>
+                    : <> · 퇴근 {dayjs(today!.clock_out_at!).format('HH:mm')} · 근무 {fmtMinutes(today!.worked_minutes)}</>}
                 </>
-              ) : '아직 출근 전입니다'}
+              )}
             </p>
           </div>
         </div>
 
-        {/* 오른쪽: 출퇴근 액션 */}
+        {/* 오른쪽: 출퇴근 액션 — 근무 중이면 퇴근, 아니면 출근/재출근 */}
         <div className="flex items-center gap-2">
-          {!today?.clock_in_at && (
+          {isWorking ? (
+            <Button onClick={handleClockOut} disabled={isPending} variant="outline" className="h-10 px-5">
+              <LogOut size={16} className="mr-1.5" /> 퇴근
+            </Button>
+          ) : (
             <>
               <Select value={workType} onValueChange={(v) => setWorkType(v as typeof workType)}>
                 <SelectTrigger className="h-10 w-[96px]"><SelectValue /></SelectTrigger>
@@ -95,17 +101,11 @@ export default function InboxAttendance({ data }: { data: InboxAttendanceData })
                 </SelectContent>
               </Select>
               <Button onClick={handleClockIn} disabled={isPending} className="h-10 px-5">
-                <LogIn size={16} className="mr-1.5" /> 출근
+                {hasStarted
+                  ? <><RotateCcw size={16} className="mr-1.5" /> 재출근</>
+                  : <><LogIn size={16} className="mr-1.5" /> 출근</>}
               </Button>
             </>
-          )}
-          {isWorkingToday && (
-            <Button onClick={handleClockOut} disabled={isPending} variant="outline" className="h-10 px-5">
-              <LogOut size={16} className="mr-1.5" /> 퇴근
-            </Button>
-          )}
-          {today?.clock_out_at && (
-            <span className="text-sm text-gray-400">오늘 근무 종료</span>
           )}
         </div>
       </div>

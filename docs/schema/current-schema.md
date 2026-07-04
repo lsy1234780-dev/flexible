@@ -709,9 +709,11 @@ member_statuses (            -- 자리비움/외근 등 본인 설정 상태
 -- RLS: select 멤버 전체 / insert·update·delete 본인 행만
 ```
 
-- **휴가 배지**: 저장 안 함 — `getPresenceMap()`이 승인된 leave_requests(오늘 포함)에서 파생. 휴가 > 상태 우선.
+- **상시 상태(087)**: 이벤트 없을 때도 배지 — 근무일이면 전 멤버 기본 '출근 전' → 출근 시 '업무 중' → 퇴근 시 '퇴근'.
+  출퇴근 **시각은 비공개**(attendance_records RLS 유지), `get_team_clock_states()`가 상태만 노출.
+- **우선순위**: 휴가(승인 자동) > 자리비움/외근(본인 설정) > 출근 상태. 휴가 배지는 저장 안 함 — 승인된 leave_requests에서 파생.
 - `get_my_channels()`에 `partner_id` 컬럼 추가 (DM 상대에 배지 붙이기 위해 — 085에서 drop 후 재생성).
-- UI: `components/chat/Presence.tsx` (PresenceBadge + MyStatusControl), `/chat` 사이드바·DM헤더·멤버피커 + 미니 위젯.
+- UI: `components/chat/Presence.tsx` (PresenceBadge + MyStatusControl), `/chat` 사이드바·DM헤더·멤버피커·메시지 작성자 + 미니 위젯 + 인박스 '오늘의 팀' 카드.
 
 ---
 
@@ -805,5 +807,6 @@ member_statuses (            -- 자리비움/외근 등 본인 설정 상태
 | 084 | expense_receipts_storage | expense-receipts 비공개 버킷 + 경로 기반 접근 헬퍼(영수증/이체증) |
 | 085 | member_presence | 부재 표시: member_statuses(본인 설정, 당일만) + get_my_channels에 partner_id 추가 |
 | 086 | expense_approver_access | 경비 결재자 열람 — 건별 지정 결재자에게 헤더/라인/영수증 읽기 허용 (승인 진행 가능하게) |
+| 087 | team_clock_states | get_team_clock_states() — 출퇴근 "상태"만(시각 비공개) 팀 전체 노출, 채팅 상시 배지용 |
 
-**다음 마이그레이션:** `087_xxx.sql`
+**다음 마이그레이션:** `088_xxx.sql`

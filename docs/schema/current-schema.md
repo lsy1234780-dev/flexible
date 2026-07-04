@@ -664,7 +664,8 @@ expense_claims (
 --   (결재: 요청자 draft→pending, draft/pending→cancelled만 / 지급: 재무만, 승인된 환급 건만
 --    unpaid↔paid / 수령확인: 소유자 confirmed·disputed, 재무 awaiting·none, auto는 기한 경과+closed_by='auto').
 -- 트리거 expense_items_guard: 라인은 draft에서만 추가/수정/삭제.
--- RLS: select 본인 + 재무 담당만 (휴가와 달리 금액·사용처 민감 — 팀 공개 안 함).
+-- RLS: select 본인 + 재무 담당 + 이 건의 결재자(approvals.approver_id, 086) —
+--      휴가와 달리 금액·사용처 민감해 팀 공개 안 함. 결재자는 승인 판단에 필요한 만큼만 열람.
 
 expense_claim_items (
   id uuid PK, workspace_id, claim_id, category_id,
@@ -803,5 +804,6 @@ member_statuses (            -- 자리비움/외근 등 본인 설정 상태
 | 083 | expense_core | 경비 코어: expense_managers(명시 부여)/categories(시드)/claims(3트랙 상태머신)/items/settlement_batches + 가드·동기화 트리거 |
 | 084 | expense_receipts_storage | expense-receipts 비공개 버킷 + 경로 기반 접근 헬퍼(영수증/이체증) |
 | 085 | member_presence | 부재 표시: member_statuses(본인 설정, 당일만) + get_my_channels에 partner_id 추가 |
+| 086 | expense_approver_access | 경비 결재자 열람 — 건별 지정 결재자에게 헤더/라인/영수증 읽기 허용 (승인 진행 가능하게) |
 
-**다음 마이그레이션:** `086_xxx.sql`
+**다음 마이그레이션:** `087_xxx.sql`

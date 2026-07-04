@@ -134,7 +134,7 @@ export function MessageItem({ m, meId, meName, onReact, onJump, onEdit, onDelete
     <div className="group flex flex-col relative">
       <div className="flex items-baseline gap-2">
         <span className="text-sm font-semibold text-gray-900">{mine ? meName : (m.author_name ?? '사용자')}</span>
-        {!mine && presence && <PresenceBadge info={presence} />}
+        {presence && <PresenceBadge info={presence} />}
         <span className="text-[11px] text-gray-400">{dayjs(m.created_at).format('MM.DD HH:mm')}</span>
         {m.edited_at && <span className="text-[10px] text-gray-300">(수정됨)</span>}
         <span className="ml-auto hidden group-hover:flex items-center gap-1">

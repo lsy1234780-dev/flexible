@@ -7,15 +7,29 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
 import { toast } from 'sonner';
-import { Clock, LogIn, LogOut, RotateCcw, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Clock, LogIn, LogOut, RotateCcw, ChevronLeft, ChevronRight, AlertTriangle, Moon, Plus, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   clockIn, clockOut, getMyMonthRecords, getHolidays,
   type AttendancePolicy, type AttendanceRecord, type WeeklySummary,
 } from '@/actions/attendance';
 import { getMyLeaveRequests, type LeaveRequest } from '@/actions/leaves';
+import { requestOvertime, cancelOvertime, type OvertimeRequest } from '@/actions/overtime';
+import { decideApproval, type Approval } from '@/actions/approvals';
+import type { WorkspaceMember } from '@/actions/chat';
+
+const OT_STATUS_BADGE: Record<OvertimeRequest['status'], { label: string; cls: string }> = {
+  pending: { label: '대기', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  approved: { label: '승인', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  rejected: { label: '반려', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+  cancelled: { label: '취소', cls: 'bg-gray-50 text-gray-500 border-gray-200' },
+};
 
 const WORK_TYPE_LABEL: Record<string, string> = { office: '사무실', remote: '재택', field: '외근' };
 const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
@@ -32,10 +46,14 @@ interface Props {
   initialWeekly: WeeklySummary;
   initialHolidays: { id: string; holiday_date: string; name: string }[];
   initialLeaves: LeaveRequest[];
+  myOvertime: OvertimeRequest[];
+  overtimeApprovals: Approval[];
+  members: WorkspaceMember[];
 }
 
 export default function AttendanceClient({
   policy, initialToday, initialMonthRecords, initialWeekly, initialHolidays, initialLeaves,
+  myOvertime, overtimeApprovals, members,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -44,6 +62,58 @@ export default function AttendanceClient({
   const [records, setRecords] = useState(initialMonthRecords);
   const [holidays, setHolidays] = useState(initialHolidays);
   const [leaves, setLeaves] = useState(initialLeaves);
+
+  // 초과근무 신청 폼
+  const [otOpen, setOtOpen] = useState(false);
+  const [otDate, setOtDate] = useState(dayjs().format('YYYY-MM-DD'));
+  const [otStart, setOtStart] = useState(policy.standard_end.slice(0, 5));
+  const [otEnd, setOtEnd] = useState('21:00');
+  const [otReason, setOtReason] = useState('');
+  const [otApproverId, setOtApproverId] = useState('');
+
+  // 반려 다이얼로그 (초과근무 승인용)
+  const [decideTarget, setDecideTarget] = useState<Approval | null>(null);
+  const [decisionNote, setDecisionNote] = useState('');
+
+  function submitOvertime() {
+    const approver = members.find((m) => m.user_id === otApproverId);
+    if (!approver) { toast.error('승인자를 선택하세요'); return; }
+    startTransition(async () => {
+      const res = await requestOvertime({
+        workDate: otDate,
+        startTime: otStart,
+        endTime: otEnd,
+        reason: otReason,
+        approverId: approver.user_id,
+        approverName: approver.name,
+      });
+      if (res?.error) { toast.error(res.error); return; }
+      toast.success('초과근무를 신청했습니다 — 승인자에게 알림이 전송되었습니다');
+      setOtOpen(false);
+      router.refresh();
+    });
+  }
+
+  function cancelOt(id: string) {
+    if (!confirm('이 신청을 취소하시겠습니까?')) return;
+    startTransition(async () => {
+      const res = await cancelOvertime(id);
+      if (res?.error) { toast.error(res.error); return; }
+      toast.success('취소되었습니다');
+      router.refresh();
+    });
+  }
+
+  function decideOt(approval: Approval, decision: 'approved' | 'rejected', note: string) {
+    startTransition(async () => {
+      const res = await decideApproval(approval.id, decision, note);
+      if (res?.error) { toast.error(res.error); return; }
+      toast.success(decision === 'approved' ? '승인했습니다' : '반려했습니다');
+      setDecideTarget(null);
+      setDecisionNote('');
+      router.refresh();
+    });
+  }
 
   const today = initialToday;
   const weekly = initialWeekly;
@@ -182,6 +252,84 @@ export default function AttendanceClient({
         </div>
       </div>
 
+      {/* 내가 승인할 초과근무 */}
+      {overtimeApprovals.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+          <h2 className="flex items-center gap-1.5 font-semibold text-gray-900 text-sm mb-2">
+            <CheckCircle2 size={15} className="text-amber-600" /> 내가 승인할 초과근무 ({overtimeApprovals.length})
+          </h2>
+          <div className="space-y-2">
+            {overtimeApprovals.map((a) => (
+              <div key={a.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg border bg-white p-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{a.entity_label}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {a.requested_by_name} · {dayjs(a.created_at).format('M/D HH:mm')} 요청
+                    {a.note && <> · &quot;{a.note}&quot;</>}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" disabled={isPending} onClick={() => decideOt(a, 'approved', '')}>승인</Button>
+                  <Button size="sm" variant="outline" disabled={isPending}
+                    onClick={() => { setDecideTarget(a); setDecisionNote(''); }}>
+                    반려
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 초과근무 사전 신청 */}
+      <div className="rounded-xl border bg-white">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <h2 className="flex items-center gap-1.5 font-semibold text-gray-900 text-sm">
+            <Moon size={15} /> 초과근무 신청 ({dayjs().year()}년)
+          </h2>
+          <Button size="sm" variant="outline" onClick={() => {
+            setOtDate(dayjs().format('YYYY-MM-DD'));
+            setOtStart(policy.standard_end.slice(0, 5));
+            setOtEnd('21:00');
+            setOtReason('');
+            setOtApproverId('');
+            setOtOpen(true);
+          }}>
+            <Plus size={14} className="mr-1" /> 신청
+          </Button>
+        </div>
+        {myOvertime.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-gray-400">
+            신청한 초과근무가 없습니다 — 사전 신청하면 승인 기록이 남고 월 집계·CSV에 포함됩니다
+          </p>
+        ) : (
+          <div className="divide-y">
+            {myOvertime.map((o) => (
+              <div key={o.id} className="flex items-center justify-between gap-2 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900">
+                    {dayjs(o.work_date).format('M/D')} ({DAY_LABELS[dayjs(o.work_date).day()]}) ·{' '}
+                    {dayjs(o.start_at).format('HH:mm')}~{dayjs(o.end_at).format('HH:mm')}
+                    <span className="text-gray-500 font-normal"> ({fmtMinutes(o.planned_minutes)})</span>
+                  </p>
+                  {o.reason && <p className="text-xs text-gray-500 mt-0.5 truncate">{o.reason}</p>}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className={cn('rounded-full border px-2 py-0.5 text-xs font-medium', OT_STATUS_BADGE[o.status].cls)}>
+                    {OT_STATUS_BADGE[o.status].label}
+                  </span>
+                  {o.status === 'pending' && (
+                    <Button size="sm" variant="ghost" className="text-gray-400" disabled={isPending} onClick={() => cancelOt(o.id)}>
+                      취소
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* 월 캘린더 */}
       <div className="rounded-xl border bg-white p-4 sm:p-5">
         <div className="flex items-center justify-between mb-3">
@@ -238,6 +386,68 @@ export default function AttendanceClient({
           })}
         </div>
       </div>
+
+      {/* 초과근무 신청 다이얼로그 */}
+      <Dialog open={otOpen} onOpenChange={setOtOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>초과근무 사전 신청</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>날짜</Label>
+              <Input type="date" value={otDate} onChange={(e) => setOtDate(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>시작</Label>
+                <Input type="time" value={otStart} onChange={(e) => setOtStart(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>종료</Label>
+                <Input type="time" value={otEnd} onChange={(e) => setOtEnd(e.target.value)} />
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-400">
+              종료가 시작보다 이르면 다음날 새벽으로 처리됩니다 (예: 22:00~01:00)
+            </p>
+            <div className="space-y-1.5">
+              <Label>사유</Label>
+              <Textarea rows={2} value={otReason} onChange={(e) => setOtReason(e.target.value)} placeholder="예: 월말 마감 대응" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>승인자</Label>
+              <Select value={otApproverId} onValueChange={setOtApproverId}>
+                <SelectTrigger><SelectValue placeholder="승인자 선택" /></SelectTrigger>
+                <SelectContent>
+                  {members.map((m) => (
+                    <SelectItem key={m.user_id} value={m.user_id}>
+                      {m.name}{m.department && ` · ${m.department}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOtOpen(false)}>닫기</Button>
+            <Button onClick={submitOvertime} disabled={isPending || !otApproverId}>신청</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 초과근무 반려 다이얼로그 */}
+      <Dialog open={!!decideTarget} onOpenChange={(v) => !v && setDecideTarget(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>반려 사유</DialogTitle></DialogHeader>
+          <Textarea rows={3} value={decisionNote} onChange={(e) => setDecisionNote(e.target.value)} placeholder="반려 사유를 입력하세요" />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDecideTarget(null)}>닫기</Button>
+            <Button variant="destructive" disabled={isPending}
+              onClick={() => decideTarget && decideOt(decideTarget, 'rejected', decisionNote)}>
+              반려
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

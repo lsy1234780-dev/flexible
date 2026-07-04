@@ -6,11 +6,12 @@
 
 import { useState, useTransition } from 'react';
 import dayjs from 'dayjs';
-import { ChevronLeft, ChevronRight, Users, CalendarDays, Building2, House, Briefcase } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Users, CalendarDays, Building2, House, Briefcase, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { getHolidays, getTeamWorkTypeStats, type AttendancePolicy, type TeamMemberStatus, type WorkTypeStatRow } from '@/actions/attendance';
 import { getTeamLeaves, type TeamLeaveItem } from '@/actions/leaves';
+import { getTeamOvertimeStats, type TeamOvertimeRow } from '@/actions/overtime';
 
 function fmtH(min: number): string {
   if (!min) return '-';
@@ -36,29 +37,35 @@ interface Props {
   initialHolidays: { id: string; holiday_date: string; name: string }[];
   initialLeaves: TeamLeaveItem[];
   initialTypeStats: WorkTypeStatRow[];
+  initialOtStats: TeamOvertimeRow[];
 }
 
-export default function TeamClient({ todayStatus, policy, initialHolidays, initialLeaves, initialTypeStats }: Props) {
+export default function TeamClient({ todayStatus, policy, initialHolidays, initialLeaves, initialTypeStats, initialOtStats }: Props) {
   const [, startTransition] = useTransition();
   const [month, setMonth] = useState(dayjs().startOf('month'));
   const [leaves, setLeaves] = useState(initialLeaves);
   const [holidays, setHolidays] = useState(initialHolidays);
   const [typeStats, setTypeStats] = useState(initialTypeStats);
+  const [otStats, setOtStats] = useState(initialOtStats);
 
   function moveMonth(diff: number) {
     const next = month.add(diff, 'month');
     setMonth(next);
     startTransition(async () => {
-      const [lvs, hols, stats] = await Promise.all([
+      const [lvs, hols, stats, ots] = await Promise.all([
         getTeamLeaves(next.format('YYYY-MM-DD'), next.endOf('month').format('YYYY-MM-DD')),
         getHolidays(next.year()),
         getTeamWorkTypeStats(next.year(), next.month() + 1),
+        getTeamOvertimeStats(next.year(), next.month() + 1),
       ]);
       setLeaves(lvs);
       setHolidays(hols);
       setTypeStats(stats);
+      setOtStats(ots);
     });
   }
+
+  const otOf = (userId: string) => otStats.find((o) => o.user_id === userId)?.approved_minutes ?? 0;
 
   // 형태별 팀 합계 (상단 요약 바)
   const teamTotals = typeStats.reduce(
@@ -171,6 +178,7 @@ export default function TeamClient({ todayStatus, policy, initialHolidays, initi
                     <th className="py-2 text-right font-medium">재택</th>
                     <th className="py-2 text-right font-medium">외근</th>
                     <th className="py-2 text-right font-medium">합계</th>
+                    <th className="py-2 text-right font-medium">초과근무(승인)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -181,6 +189,9 @@ export default function TeamClient({ todayStatus, policy, initialHolidays, initi
                       <td className="py-2 text-right text-gray-600">{fmtH(r.remote)}</td>
                       <td className="py-2 text-right text-gray-600">{fmtH(r.field)}</td>
                       <td className="py-2 text-right font-semibold text-gray-900">{fmtH(r.total)}</td>
+                      <td className={cn('py-2 text-right', otOf(r.user_id) ? 'font-medium text-orange-600' : 'text-gray-400')}>
+                        {fmtH(otOf(r.user_id))}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -191,6 +202,28 @@ export default function TeamClient({ todayStatus, policy, initialHolidays, initi
             </p>
           </>
         )}
+
+        {/* CSV export — 급여SW(더존·이카운트 등) 임포트용. 기록·합계만, 수당 계산 없음 */}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t pt-3">
+          <span className="flex items-center gap-1 text-xs font-medium text-gray-500 mr-1">
+            <Download size={13} /> CSV 내보내기
+          </span>
+          {([
+            ['daily', '일별 상세'],
+            ['summary', '인별 요약'],
+            ['leaves', '휴가 내역'],
+            ['overtime', '초과근무'],
+          ] as const).map(([type, label]) => (
+            <a
+              key={type}
+              href={`/api/attendance/export?year=${month.year()}&month=${month.month() + 1}&type=${type}`}
+              className="rounded-full border px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              {label}
+            </a>
+          ))}
+          <span className="text-[11px] text-gray-400 ml-1">{month.format('YYYY년 M월')} 기준 · 급여SW 임포트용 (수당 계산 없음)</span>
+        </div>
       </div>
 
       {/* 부재 현황판 */}

@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import { isAttendanceManagerAction, getTeamTodayStatus, getAttendancePolicy, getHolidays, getTeamWorkTypeStats } from '@/actions/attendance';
 import { getTeamLeaves } from '@/actions/leaves';
+import { getTeamOvertimeStats } from '@/actions/overtime';
 import TeamClient from './TeamClient';
 
 export const dynamic = 'force-dynamic';
@@ -19,12 +20,13 @@ export default async function TeamPage() {
   }
 
   const month = dayjs().startOf('month');
-  const [todayStatus, policy, holidays, monthLeaves, typeStats] = await Promise.all([
+  const [todayStatus, policy, holidays, monthLeaves, typeStats, otStats] = await Promise.all([
     getTeamTodayStatus(),
     getAttendancePolicy(),
     getHolidays(month.year()),
     getTeamLeaves(month.format('YYYY-MM-DD'), month.endOf('month').format('YYYY-MM-DD')),
     getTeamWorkTypeStats(month.year(), month.month() + 1),
+    getTeamOvertimeStats(month.year(), month.month() + 1),
   ]);
 
   return (
@@ -34,6 +36,7 @@ export default async function TeamPage() {
       initialHolidays={holidays}
       initialLeaves={monthLeaves}
       initialTypeStats={typeStats}
+      initialOtStats={otStats}
     />
   );
 }

@@ -108,6 +108,13 @@ export const ENTITY_REGISTRY: EntityDef[] = [
     chip: 'bg-sky-50 text-sky-700 hover:bg-sky-100 border-sky-200',
   },
   {
+    // 초과근무 사전 신청 — 승인(approvals entity_type='overtime')·인박스 링크용.
+    type: 'overtime', label: '초과근무', module: 'attendance',
+    source: { table: 'overtime_requests', labelColumns: ['user_name'], searchColumns: ['user_name', 'reason'], orderColumn: 'created_at' },
+    href: () => '/attendance',
+    chip: 'bg-orange-50 text-orange-700 hover:bg-orange-100 border-orange-200',
+  },
+  {
     // 경비 청구 — 승인(approvals entity_type='expense')·인박스 링크·레코드 스레드용.
     // RLS가 본인+재무 담당만 조회 허용이라 검색/멘션 후보도 자연히 그 범위로 제한된다.
     type: 'expense', label: '경비', module: 'expenses',

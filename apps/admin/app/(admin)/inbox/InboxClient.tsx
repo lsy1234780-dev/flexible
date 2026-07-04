@@ -8,11 +8,13 @@ import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
 import {
   Inbox, AtSign, MessagesSquare, AlertTriangle, Hash, User, Bot, ChevronRight,
+  TreePalm, CircleMinus, CalendarDays, CircleEllipsis,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { entityHref, entityChipClass, ENTITY_LABEL } from '@/lib/entityLink';
 import type { MyMention, RecordActivity } from '@/actions/chat';
 import type { UrgentItem } from '@/actions/dashboard';
+import type { TeamSnapshot } from '@/actions/presence';
 
 // 사람 이름 → 항상 같은 색 아바타 (순수 표시용 — 데이터/구조는 안 건드림)
 const AVATAR_COLORS = [
@@ -45,10 +47,11 @@ interface Props {
   mentions: MyMention[];
   activity: RecordActivity[];
   urgent: UrgentItem[];
+  snapshot: TeamSnapshot;
   chatEnabled: boolean;
 }
 
-export default function InboxClient({ mentions, activity, urgent, chatEnabled }: Props) {
+export default function InboxClient({ mentions, activity, urgent, snapshot, chatEnabled }: Props) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('all');
 
@@ -151,6 +154,74 @@ export default function InboxClient({ mentions, activity, urgent, chatEnabled }:
           나에게 온 멘션 · 레코드 대화 · 긴급 처리를 한눈에
         </p>
       </div>
+
+      {/* 오늘의 팀 — 휴가·자리비움·다가오는 휴가·진행 중 결재 한눈에 */}
+      {(snapshot.onLeave.length > 0 || snapshot.away.length > 0 || snapshot.upcoming.length > 0 || snapshot.pending.length > 0) && (
+        <div className="rounded-xl border bg-white p-4 space-y-2.5">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">오늘의 팀</p>
+
+          {snapshot.onLeave.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="flex items-center gap-1 text-xs font-medium text-gray-500 w-24 flex-shrink-0">
+                <TreePalm size={13} className="text-sky-500" /> 휴가 중
+              </span>
+              {snapshot.onLeave.map((p) => (
+                <span key={p.user_id} className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700">
+                  {p.name} · {p.label}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {snapshot.away.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="flex items-center gap-1 text-xs font-medium text-gray-500 w-24 flex-shrink-0">
+                <CircleMinus size={13} className="text-amber-500" /> 자리비움
+              </span>
+              {snapshot.away.map((p) => (
+                <span key={p.user_id} className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                  {p.name} · {p.label}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {snapshot.upcoming.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="flex items-center gap-1 text-xs font-medium text-gray-500 w-24 flex-shrink-0">
+                <CalendarDays size={13} className="text-gray-400" /> 예정 휴가
+              </span>
+              {snapshot.upcoming.map((u, i) => (
+                <span key={i} className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs text-gray-600">
+                  {dayjs(u.start_date).format('M/D')}
+                  {u.start_date !== u.end_date && `~${dayjs(u.end_date).format('M/D')}`} {u.name} · {u.label}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {snapshot.pending.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="flex items-center gap-1 text-xs font-medium text-gray-500 w-24 flex-shrink-0">
+                <CircleEllipsis size={13} className="text-violet-500" /> 결재 진행
+              </span>
+              {snapshot.pending.map((p) => (
+                <button
+                  key={`${p.entity_type}-${p.entity_id}`}
+                  onClick={() => {
+                    const href = entityHref(p.entity_type, p.entity_id);
+                    if (href && href !== '#') router.push(href);
+                  }}
+                  className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700 hover:bg-violet-100 transition-colors"
+                  title={`승인자: ${p.approver}`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 탭 */}
       <div className="flex gap-1.5 overflow-x-auto pb-0.5">

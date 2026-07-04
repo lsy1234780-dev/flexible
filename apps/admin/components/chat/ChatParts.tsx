@@ -18,6 +18,8 @@ import {
   type MentionInput, type AttachmentInput, type EntityDetail,
 } from '@/actions/chat';
 import { entityChipClass, ENTITY_LABEL } from '@/lib/entityLink';
+import { PresenceBadge } from '@/components/chat/Presence';
+import type { PresenceInfo } from '@/actions/presence';
 
 export const EMOJIS = ['👍', '❤️', '😂', '🎉', '👀', '🙏'];
 
@@ -94,9 +96,10 @@ export interface MessageItemProps {
   onOpenThread?: () => void;
   onForward?: (msg: Message, rect: DOMRect) => void;
   replyCount?: number;
+  presence?: PresenceInfo | null; // 작성자의 부재 정보 (휴가/자리비움) — 있으면 이름 옆 배지
 }
 
-export function MessageItem({ m, meId, meName, onReact, onJump, onEdit, onDelete, onOpenThread, onForward, replyCount = 0 }: MessageItemProps) {
+export function MessageItem({ m, meId, meName, onReact, onJump, onEdit, onDelete, onOpenThread, onForward, replyCount = 0, presence = null }: MessageItemProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(m.body);
@@ -131,6 +134,7 @@ export function MessageItem({ m, meId, meName, onReact, onJump, onEdit, onDelete
     <div className="group flex flex-col relative">
       <div className="flex items-baseline gap-2">
         <span className="text-sm font-semibold text-gray-900">{mine ? meName : (m.author_name ?? '사용자')}</span>
+        {!mine && presence && <PresenceBadge info={presence} />}
         <span className="text-[11px] text-gray-400">{dayjs(m.created_at).format('MM.DD HH:mm')}</span>
         {m.edited_at && <span className="text-[10px] text-gray-300">(수정됨)</span>}
         <span className="ml-auto hidden group-hover:flex items-center gap-1">

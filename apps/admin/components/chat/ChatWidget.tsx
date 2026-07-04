@@ -51,6 +51,7 @@ export default function ChatWidget() {
   const replyCount = (parentId: string) => messages.filter((m) => m.reply_to === parentId).length;
   const threadMsg = threadParent ? messages.find((m) => m.id === threadParent) ?? null : null;
   const threadReplies = threadParent ? messages.filter((m) => m.reply_to === threadParent) : [];
+  const authorPresence = (m: Message) => (m.author_id ? presence[m.author_id] ?? null : null);
 
   const loadChannels = useCallback(async () => {
     const rows = (await getChannels()) as Ch[];
@@ -220,6 +221,7 @@ export default function ChatWidget() {
                   onJump={jump}
                   onOpenThread={() => setThreadParent(m.id)}
                   replyCount={replyCount(m.id)}
+                  presence={authorPresence(m)}
                 />
               ))}
               {topLevel.length === 0 && activeId && <p className="pt-6 text-center text-sm text-gray-400">첫 메시지를 남겨보세요.</p>}
@@ -249,7 +251,7 @@ export default function ChatWidget() {
                   </button>
                 </div>
                 <div className="w-80 flex-1 overflow-y-auto px-3 py-3 space-y-3">
-                  <MessageItem m={threadMsg} meId={me.id} meName={me.name} onReact={handleReact} onEdit={handleEdit} onDelete={handleDelete} onJump={jump} />
+                  <MessageItem m={threadMsg} meId={me.id} meName={me.name} onReact={handleReact} onEdit={handleEdit} onDelete={handleDelete} onJump={jump} presence={authorPresence(threadMsg)} />
                   {threadReplies.length > 0 && (
                     <div className="flex items-center gap-2 text-[11px] text-gray-400">
                       <span>{threadReplies.length}개 답글</span>
@@ -258,7 +260,7 @@ export default function ChatWidget() {
                   )}
                   {threadReplies.map((r) => (
                     <div key={r.id} className="border-l-2 border-gray-100 pl-3">
-                      <MessageItem m={r} meId={me.id} meName={me.name} onReact={handleReact} onEdit={handleEdit} onDelete={handleDelete} onJump={jump} />
+                      <MessageItem m={r} meId={me.id} meName={me.name} onReact={handleReact} onEdit={handleEdit} onDelete={handleDelete} onJump={jump} presence={authorPresence(r)} />
                     </div>
                   ))}
                   <div ref={threadBottomRef} />

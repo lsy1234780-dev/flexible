@@ -10,6 +10,7 @@ import dayjs from 'dayjs';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { getCurrentUser } from '@/actions/auth';
+import { getWorkspaceMembers } from '@/actions/chat';
 import { getEnabledModules } from '@/actions/modules';
 
 export interface PresenceInfo {
@@ -104,4 +105,104 @@ export async function clearMyStatus() {
   const { error } = await supabase.from('member_statuses').delete().eq('user_id', me.id);
   if (error) return { error: error.message };
   return { success: true };
+}
+
+// ─── 오늘의 팀 스냅샷 (인박스 상단 카드) ───
+// "누가 휴가고, 누가 자리에 없고, 어떤 결재가 돌고 있는지"를 한눈에.
+// 모듈 유기성: attendance 꺼지면 휴가 블록, expenses 꺼지면 경비 결재 블록이 사라진다.
+
+export interface SnapshotPerson {
+  user_id: string;
+  name: string;
+  label: string; // 휴가 종류명 또는 상태 문구
+}
+
+export interface TeamSnapshot {
+  onLeave: SnapshotPerson[];                          // 오늘 휴가 (승인)
+  away: SnapshotPerson[];                             // 자리비움/외근 (본인 설정, 오늘)
+  upcoming: { name: string; label: string; start_date: string; end_date: string }[]; // 7일 내 시작 휴가
+  pending: { entity_type: 'leave' | 'expense'; entity_id: string; label: string; approver: string }[]; // 진행 중 결재
+}
+
+const EMPTY_SNAPSHOT: TeamSnapshot = { onLeave: [], away: [], upcoming: [], pending: [] };
+
+export async function getTeamSnapshot(): Promise<TeamSnapshot> {
+  if (process.env.PREVIEW_MODE === 'true') return EMPTY_SNAPSHOT;
+  try {
+    const supabase = await createClient();
+    const enabled = await getEnabledModules();
+    const attendanceOn = enabled.includes('attendance');
+    const expensesOn = enabled.includes('expenses');
+    const today = dayjs().format('YYYY-MM-DD');
+    const week = dayjs().add(7, 'day').format('YYYY-MM-DD');
+    const snapshot: TeamSnapshot = { onLeave: [], away: [], upcoming: [], pending: [] };
+
+    // 이름 매핑 (member_statuses엔 이름 스냅샷이 없음)
+    const me = await getCurrentUser();
+    const members = await getWorkspaceMembers();
+    const nameOf = (id: string) =>
+      members.find((m) => m.user_id === id)?.name ?? (me?.id === id ? me.name : '멤버');
+
+    // ① 자리비움/외근 (오늘)
+    const { data: statuses } = await supabase
+      .from('member_statuses')
+      .select('user_id, label')
+      .eq('set_on', today);
+    snapshot.away = (statuses ?? []).map((s) => ({
+      user_id: s.user_id, name: nameOf(s.user_id), label: s.label,
+    }));
+
+    // ② 오늘 휴가 + 7일 내 시작 휴가 (attendance ON일 때만)
+    if (attendanceOn) {
+      const [{ data: todayLeaves }, { data: upcomingLeaves }] = await Promise.all([
+        supabase
+          .from('leave_requests')
+          .select('user_id, user_name, leave_types(name)')
+          .eq('status', 'approved')
+          .lte('start_date', today)
+          .gte('end_date', today),
+        supabase
+          .from('leave_requests')
+          .select('user_name, start_date, end_date, leave_types(name)')
+          .eq('status', 'approved')
+          .gt('start_date', today)
+          .lte('start_date', week)
+          .order('start_date'),
+      ]);
+      snapshot.onLeave = (todayLeaves ?? []).map((l) => {
+        const lt = l.leave_types as unknown as { name: string } | null;
+        return { user_id: l.user_id, name: l.user_name ?? nameOf(l.user_id), label: lt?.name ?? '휴가' };
+      });
+      // 오늘 휴가 중인 사람은 자리비움 목록에서 제외 (휴가가 우선)
+      const onLeaveIds = new Set(snapshot.onLeave.map((p) => p.user_id));
+      snapshot.away = snapshot.away.filter((p) => !onLeaveIds.has(p.user_id));
+      snapshot.upcoming = (upcomingLeaves ?? []).map((l) => {
+        const lt = l.leave_types as unknown as { name: string } | null;
+        return { name: l.user_name ?? '멤버', label: lt?.name ?? '휴가', start_date: l.start_date, end_date: l.end_date };
+      });
+    }
+
+    // ③ 진행 중 결재 (휴가·경비 — 켜진 모듈만)
+    const pendingTypes = [attendanceOn && 'leave', expensesOn && 'expense'].filter(Boolean) as string[];
+    if (pendingTypes.length > 0) {
+      const { data: approvals } = await supabase
+        .from('approvals')
+        .select('entity_type, entity_id, entity_label, approver_name')
+        .eq('status', 'pending')
+        .in('entity_type', pendingTypes)
+        .order('created_at', { ascending: false })
+        .limit(8);
+      snapshot.pending = (approvals ?? []).map((a) => ({
+        entity_type: a.entity_type as 'leave' | 'expense',
+        entity_id: a.entity_id,
+        label: a.entity_label ?? (a.entity_type === 'leave' ? '휴가 신청' : '경비 신청'),
+        approver: a.approver_name ?? '승인자',
+      }));
+    }
+
+    return snapshot;
+  } catch {
+    // 스냅샷 실패가 인박스를 막지 않게
+    return EMPTY_SNAPSHOT;
+  }
 }

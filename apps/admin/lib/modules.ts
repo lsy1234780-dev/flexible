@@ -29,6 +29,9 @@ export const MENU_MODULE_MAP: Record<string, string> = {
   '/attendance/leaves': 'attendance',
   '/attendance/team': 'attendance',
   '/attendance/policy': 'attendance',
+  // 경비 그룹 전체 → expenses 모듈
+  '/expenses': 'expenses',
+  '/expenses/finance': 'expenses',
 };
 
 // 전체 모듈 키 (preview/fallback에서 "전부 켜짐"으로 취급)
@@ -36,7 +39,7 @@ export const ALL_MODULE_KEYS = [
   'platform', 'partners', 'products', 'quotations', 'orders', 'inventory', 'serials',
   'receiving', 'purchasing', 'supply', 'fulfillment', 'service', 'crm_basic', 'analytics',
   'b2b_portal', 'crm_pipeline', 'chat', 'ecommerce', 'pos', 'warranty', 'logistics',
-  'attendance',
+  'attendance', 'expenses',
 ] as const;
 
 // 모듈 카탈로그 — 설정 화면의 토글 목록 소스 (docs/architecture/module-map.md 기준).
@@ -69,6 +72,7 @@ export const MODULE_CATALOG: ModuleInfo[] = [
   { key: 'crm_pipeline', label: '영업 파이프라인', description: '리드→딜 관리', tier: 'optional' },
   { key: 'chat', label: '팀 채팅', description: '채팅 + 엔티티 멘션', tier: 'optional' },
   { key: 'attendance', label: '근태', description: '출퇴근 기록·휴가·팀 부재 현황', tier: 'optional' },
+  { key: 'expenses', label: '경비', description: '경비 청구·결재·정산', tier: 'optional' },
   { key: 'warranty', label: '보증 관리', description: '보증 추적', tier: 'optional', comingSoon: true },
   { key: 'ecommerce', label: '이커머스 연동', description: '온라인스토어', tier: 'optional', comingSoon: true },
   { key: 'pos', label: 'POS', description: '오프라인 판매', tier: 'optional', comingSoon: true },

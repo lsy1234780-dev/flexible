@@ -6,7 +6,7 @@ import {
   Package, ClipboardList, Building2, FileText, ShoppingCart,
   Tags, FolderTree, Menu, X, ChevronDown, ExternalLink, ClipboardCheck, Settings, Wrench, Layers,
   PanelLeftClose, PanelLeftOpen, LogOut, PackageCheck, Warehouse, Search, ShieldCheck, TrendingUp, Target, MessageSquare, LayoutDashboard, Inbox,
-  Clock, CalendarDays, Users, SlidersHorizontal,
+  Clock, CalendarDays, Users, SlidersHorizontal, Receipt, Banknote,
 } from 'lucide-react';
 import InventoryFinderModal from '@/components/InventoryFinderModal';
 import { useMemo, useState, useTransition } from 'react';
@@ -26,7 +26,7 @@ interface NavItem {
   icon: React.ComponentType<{ size?: number }>;
   exact?: boolean;
   external?: boolean;
-  managerOnly?: boolean; // 근태 관리자(attendance_managers)에게만 노출
+  managerOnly?: 'attendance' | 'expense'; // 해당 모듈 관리자(명시 부여)에게만 노출
 }
 
 interface NavGroup {
@@ -88,8 +88,15 @@ const allNavGroups: NavGroup[] = [
     items: [
       { href: '/attendance', label: '내 근태', icon: Clock, exact: true },
       { href: '/attendance/leaves', label: '휴가', icon: CalendarDays, exact: true },
-      { href: '/attendance/team', label: '팀 현황', icon: Users, exact: true, managerOnly: true },
-      { href: '/attendance/policy', label: '근태 설정', icon: SlidersHorizontal, exact: true, managerOnly: true },
+      { href: '/attendance/team', label: '팀 현황', icon: Users, exact: true, managerOnly: 'attendance' },
+      { href: '/attendance/policy', label: '근태 설정', icon: SlidersHorizontal, exact: true, managerOnly: 'attendance' },
+    ],
+  },
+  {
+    label: '경비',
+    items: [
+      { href: '/expenses', label: '내 경비', icon: Receipt },
+      { href: '/expenses/finance', label: '정산 관리', icon: Banknote, exact: true, managerOnly: 'expense' },
     ],
   },
   {
@@ -109,9 +116,10 @@ interface Props {
   enabledModules?: string[];
   userName?: string;
   attendanceManager?: boolean;
+  expenseManager?: boolean;
 }
 
-export default function Sidebar({ role, menuRules, departmentLabels = {}, positionLabels = {}, superAdminMinLevel, enabledModules, userName = '사용자', attendanceManager = false }: Props) {
+export default function Sidebar({ role, menuRules, departmentLabels = {}, positionLabels = {}, superAdminMinLevel, enabledModules, userName = '사용자', attendanceManager = false, expenseManager = false }: Props) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -134,11 +142,12 @@ export default function Sidebar({ role, menuRules, departmentLabels = {}, positi
           (item) =>
             isMenuModuleEnabled(item.href, enabledModules) &&
             canAccessMenu(item.href, role, menuRules, superAdminMinLevel) &&
-            (!item.managerOnly || attendanceManager),
+            (!item.managerOnly ||
+              (item.managerOnly === 'attendance' ? attendanceManager : expenseManager)),
         ),
       }))
       .filter((group) => group.items.length > 0);
-  }, [role, menuRules, superAdminMinLevel, enabledModules, attendanceManager]);
+  }, [role, menuRules, superAdminMinLevel, enabledModules, attendanceManager, expenseManager]);
 
   function isActive(href: string, exact?: boolean) {
     if (exact) return pathname === href;

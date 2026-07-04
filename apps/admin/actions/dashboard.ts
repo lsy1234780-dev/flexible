@@ -11,7 +11,7 @@ export interface UrgentItem {
   sub: string;
   href: string;
   level: 'high' | 'medium';
-  kind: 'order' | 'as' | 'stock' | 'quote' | 'mentions' | 'approval' | 'attendance';
+  kind: 'order' | 'as' | 'stock' | 'quote' | 'mentions' | 'approval' | 'attendance' | 'expense';
   entityId?: string; // kind별 원본 레코드 id — 인박스에서 인라인 액션(예: 수주 확정) 타겟팅용
 }
 
@@ -194,6 +194,77 @@ export async function getUrgentItems(): Promise<UrgentItem[]> {
     }
   } catch {
     // 근태 알림 실패가 인박스 전체를 막지 않게 무시
+  }
+
+  // 경비: ① 직원 본인 — 지급 수령확인 대기(D-n), ② 재무 담당 — 이의제기·미지급 aging
+  try {
+    const { data: expOn } = await supabase
+      .from('workspace_modules')
+      .select('enabled')
+      .eq('module_key', 'expenses')
+      .eq('enabled', true)
+      .maybeSingle();
+    if (expOn && user) {
+      // ① 내 수령확인 대기
+      const { data: awaiting } = await supabase
+        .from('expense_claims')
+        .select('id, title, confirm_due_at')
+        .eq('user_id', user.id)
+        .eq('confirm_status', 'awaiting');
+      for (const c of awaiting ?? []) {
+        const dleft = c.confirm_due_at
+          ? Math.max(0, Math.ceil((new Date(c.confirm_due_at).getTime() - now.getTime()) / 86400000))
+          : null;
+        items.push({
+          id: `expense-confirm-${c.id}`,
+          label: `경비 「${c.title}」 지급 확인 필요`,
+          sub: dleft != null ? `입금을 확인하고 눌러주세요 · D-${dleft} (무응답 시 미이의 마감)` : '입금을 확인해주세요',
+          href: `/expenses/${c.id}`,
+          level: dleft != null && dleft <= 3 ? 'high' : 'medium',
+          kind: 'expense',
+          entityId: c.id,
+        });
+      }
+
+      // ② 재무 담당: 이의제기(긴급) + 승인 후 7일 미지급 aging
+      const { data: isExpMgr } = await supabase.rpc('is_expense_manager', { p_ws: ws });
+      if (isExpMgr === true) {
+        const [{ data: disputed }, { data: agingUnpaid }] = await Promise.all([
+          supabase.from('expense_claims')
+            .select('id, title, user_name, dispute_note')
+            .eq('confirm_status', 'disputed'),
+          supabase.from('expense_claims')
+            .select('id, title, user_name, created_at')
+            .eq('status', 'approved').eq('claim_kind', 'reimbursement').eq('settle_status', 'unpaid')
+            .lt('created_at', day7),
+        ]);
+        for (const c of disputed ?? []) {
+          items.push({
+            id: `expense-dispute-${c.id}`,
+            label: `경비 이의제기: 「${c.title}」`,
+            sub: `${c.user_name ?? '직원'} · ${c.dispute_note ?? '미수령/금액 상이'} — 확인 필요`,
+            href: `/expenses/finance`,
+            level: 'high',
+            kind: 'expense',
+            entityId: c.id,
+          });
+        }
+        for (const c of agingUnpaid ?? []) {
+          const days = Math.floor((now.getTime() - new Date(c.created_at).getTime()) / 86400000);
+          items.push({
+            id: `expense-aging-${c.id}`,
+            label: `경비 「${c.title}」 미지급 ${days}일 경과`,
+            sub: `${c.user_name ?? '직원'} · 승인됨 — 정산 필요`,
+            href: `/expenses/finance`,
+            level: days >= 14 ? 'high' : 'medium',
+            kind: 'expense',
+            entityId: c.id,
+          });
+        }
+      }
+    }
+  } catch {
+    // 경비 알림 실패가 인박스 전체를 막지 않게 무시
   }
 
   const mentionCount = ((unreadMentions.data ?? []) as { is_unread: boolean }[])

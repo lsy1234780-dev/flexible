@@ -108,6 +108,14 @@ export const ENTITY_REGISTRY: EntityDef[] = [
     chip: 'bg-sky-50 text-sky-700 hover:bg-sky-100 border-sky-200',
   },
   {
+    // 경비 청구 — 승인(approvals entity_type='expense')·인박스 링크·레코드 스레드용.
+    // RLS가 본인+재무 담당만 조회 허용이라 검색/멘션 후보도 자연히 그 범위로 제한된다.
+    type: 'expense', label: '경비', module: 'expenses',
+    source: { table: 'expense_claims', labelColumns: ['title', 'user_name'], searchColumns: ['title', 'user_name'], orderColumn: 'created_at' },
+    href: (id) => `/expenses/${id}`,
+    chip: 'bg-pink-50 text-pink-700 hover:bg-pink-100 border-pink-200',
+  },
+  {
     type: 'as', label: 'A/S', module: 'service',
     source: { table: 'as_requests', labelColumns: ['number', 'customer_name'], searchColumns: ['number', 'customer_name'], orderColumn: 'created_at' },
     href: (id) => `/as/${id}`,

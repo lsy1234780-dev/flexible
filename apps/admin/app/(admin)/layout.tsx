@@ -10,9 +10,10 @@ import { getDepartments, getPositions } from '@/actions/departments';
 import { getSuperAdminMinLevel } from '@/actions/settings';
 import { getEnabledModules } from '@/actions/modules';
 import { isAttendanceManagerAction } from '@/actions/attendance';
+import { isExpenseManagerAction } from '@/actions/expenses';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const [role, extraMenus, menuRules, departments, positions, superAdminMinLevel, currentUser, enabledModules, attendanceManager] = await Promise.all([
+  const [role, extraMenus, menuRules, departments, positions, superAdminMinLevel, currentUser, enabledModules, attendanceManager, expenseManager] = await Promise.all([
     getUserRole(),
     getMyExtraMenus(),
     getMenuAccessRules(),
@@ -22,6 +23,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     getCurrentUser(),
     getEnabledModules(),
     isAttendanceManagerAction(),
+    isExpenseManagerAction(),
   ]);
   const roleWithExtras = { ...role, extraMenus };
 
@@ -43,6 +45,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           enabledModules={enabledModules}
           userName={currentUser?.name ?? '사용자'}
           attendanceManager={attendanceManager}
+          expenseManager={expenseManager}
         />
         <ModulesProvider modules={enabledModules}>
           <main className="flex-1 overflow-y-auto p-4 pt-18 md:p-6 md:pt-6">{children}</main>

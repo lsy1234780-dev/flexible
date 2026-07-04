@@ -573,8 +573,9 @@ attendance_records (
   clock_in_at timestamptz,              -- 그날 최초 출근 (표시용)
   clock_out_at timestamptz,             -- 마지막 퇴근 (재출근 시 null로 복귀)
   session_start_at timestamptz,         -- 현재 열린 세션 시작 (088) — null이면 근무 중 아님
-  work_type text DEFAULT 'office',      -- 'office'|'remote'|'field'
+  work_type text DEFAULT 'office',      -- 'office'|'remote'|'field' (현재/마지막 세션 형태)
   worked_minutes int,                   -- 세션 근무시간 누적 합계 (첫 퇴근 시 휴게 1회 차감)
+  type_minutes jsonb DEFAULT '{}',      -- 형태별 누적 (089) 예: {"office":240,"field":180}. 합=worked_minutes
   memo text, created_at, updated_at,
   UNIQUE(workspace_id, user_id, work_date)
 )
@@ -813,5 +814,6 @@ member_statuses (            -- 자리비움/외근 등 본인 설정 상태
 | 086 | expense_approver_access | 경비 결재자 열람 — 건별 지정 결재자에게 헤더/라인/영수증 읽기 허용 (승인 진행 가능하게) |
 | 087 | team_clock_states | get_team_clock_states() — 출퇴근 "상태"만(시각 비공개) 팀 전체 노출, 채팅 상시 배지용 |
 | 088 | attendance_reclock | attendance_records.session_start_at 추가 — 하루 안 재출근(퇴근 후 재복귀) 지원 |
+| 089 | attendance_type_minutes | attendance_records.type_minutes(jsonb) 추가 — 사무실/재택/외근 형태별 시간 개별 집계 |
 
-**다음 마이그레이션:** `089_xxx.sql`
+**다음 마이그레이션:** `090_xxx.sql`

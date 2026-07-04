@@ -9,7 +9,7 @@ import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
 import { toast } from 'sonner';
 import {
-  Banknote, CircleAlert, CircleCheck, CreditCard, Paperclip, Plus, ShieldCheck, Trash2,
+  Banknote, CircleAlert, CircleCheck, CreditCard, Download, Paperclip, Plus, ShieldCheck, Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -72,6 +72,9 @@ export default function FinanceClient({ finance, categories, managers, members }
 
   // 담당자 추가
   const [newManagerId, setNewManagerId] = useState('');
+
+  // CSV export 월 선택
+  const [exportMonth, setExportMonth] = useState(dayjs().format('YYYY-MM'));
 
   const selectedClaims = finance.toPay.filter((c) => selected.has(c.id));
   const selectedTotal = selectedClaims.reduce((s, c) => s + Number(c.total_amount), 0);
@@ -191,9 +194,26 @@ export default function FinanceClient({ finance, categories, managers, members }
 
   return (
     <div className="space-y-4 max-w-4xl">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">정산 관리</h1>
-        <p className="text-sm text-gray-500 mt-0.5">승인된 경비의 지급 처리와 수령 확인을 관리합니다</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">정산 관리</h1>
+          <p className="text-sm text-gray-500 mt-0.5">승인된 경비의 지급 처리와 수령 확인을 관리합니다</p>
+        </div>
+        {/* CSV export — 지출일 기준 라인 단위 (회계 분개·증빙 대조용) */}
+        <div className="flex items-center gap-2">
+          <input
+            type="month"
+            value={exportMonth}
+            onChange={(e) => setExportMonth(e.target.value)}
+            className="h-9 rounded-md border px-2 text-sm text-gray-700"
+          />
+          <a
+            href={`/api/expenses/export?year=${exportMonth.slice(0, 4)}&month=${parseInt(exportMonth.slice(5, 7), 10)}`}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            <Download size={14} /> CSV
+          </a>
+        </div>
       </div>
 
       {/* 탭 */}

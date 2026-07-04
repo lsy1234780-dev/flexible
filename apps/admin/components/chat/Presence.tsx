@@ -11,13 +11,12 @@ import { CircleMinus, TreePalm } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getMyStatus, setMyStatus, clearMyStatus, type PresenceInfo, type PresenceKind } from '@/actions/presence';
 
-// 상태별 톤 — 업무 중(초록 점), 퇴근/출근 전(회색 점), 휴가/자리비움(아이콘 칩)
+// 상태별 톤 — 출근(초록 점), 퇴근(회색 점), 휴가/자리비움(아이콘 칩)
 const TONE: Record<PresenceKind, { cls: string; dot?: string; title: (label: string) => string }> = {
   leave: { cls: 'border-sky-200 bg-sky-50 text-sky-700', title: (l) => `오늘 ${l} (휴가 승인됨)` },
   status: { cls: 'border-amber-200 bg-amber-50 text-amber-700', title: (l) => `본인 설정: ${l}` },
-  working: { cls: 'border-emerald-200 bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500', title: () => '출근 완료 — 업무 중' },
+  working: { cls: 'border-emerald-200 bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500', title: () => '출근 완료' },
   done: { cls: 'border-gray-200 bg-gray-50 text-gray-500', dot: 'bg-gray-400', title: () => '오늘 업무 종료' },
-  not_in: { cls: 'border-gray-200 bg-gray-50 text-gray-400', dot: 'bg-gray-300', title: () => '아직 출근 기록 없음' },
 };
 
 export function PresenceBadge({ info, className }: { info?: PresenceInfo | null; className?: string }) {

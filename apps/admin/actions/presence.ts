@@ -13,18 +13,17 @@ import { getCurrentUser } from '@/actions/auth';
 import { getWorkspaceMembers } from '@/actions/chat';
 import { getEnabledModules } from '@/actions/modules';
 
-export type PresenceKind = 'leave' | 'status' | 'working' | 'done' | 'not_in';
+export type PresenceKind = 'leave' | 'status' | 'working' | 'done';
 
 export interface PresenceInfo {
   kind: PresenceKind;
-  label: string; // 휴가=종류명, 상태=본인 문구, 나머지='업무 중'/'퇴근'/'출근 전'
+  label: string; // 휴가=종류명, 상태=본인 문구, 나머지='출근'/'퇴근'
 }
 
 export type PresenceMap = Record<string, PresenceInfo>;
 
-// user_id → 상태. 이벤트가 있을 때만이 아니라 "평상시" 상태도 항상 표시:
-//   출근 전(기록 없음) → 업무 중(출근) → 퇴근(퇴근 찍음). 요일과 무관하게 항상 채운다
-//   (근무일에만 기본값을 채우면 주말·공휴일엔 아무 배지도 안 뜨는 문제가 있었음 — 항상 표시).
+// user_id → 상태. 출근 전(기록 없음)은 표시하지 않는다 — 실제로 의미 있는 상태만:
+//   출근(출근 찍음) / 퇴근(퇴근 찍음) / 휴가(승인) / 자리비움·외근(본인 설정).
 // 우선순위: 휴가(승인 자동) > 자리비움/외근(본인 설정) > 출근 상태.
 // attendance 모듈이 꺼진 워크스페이스는 본인 설정 상태만 표시된다 (모듈 유기성).
 export async function getPresenceMap(): Promise<PresenceMap> {
@@ -36,17 +35,12 @@ export async function getPresenceMap(): Promise<PresenceMap> {
     const supabase = await createClient();
     const attendanceOn = (await getEnabledModules()).includes('attendance');
 
-    // ① 출근 상태 기본값 (attendance ON이면 요일 무관하게 항상) — 전 멤버 '출근 전'에서 시작
+    // ① 출퇴근 상태 (attendance ON일 때만) — 기록 없는 사람은 배지 자체를 안 붙인다
     if (attendanceOn) {
-      const me = await getCurrentUser();
-      const members = await getWorkspaceMembers();
-      for (const id of [...(me ? [me.id] : []), ...members.map((m) => m.user_id)]) {
-        map[id] = { kind: 'not_in', label: '출근 전' };
-      }
       // 출퇴근 상태만 노출하는 RPC (시각은 비공개 — 087)
       const { data: clocks } = await supabase.rpc('get_team_clock_states');
       for (const c of (clocks ?? []) as { user_id: string; state: string }[]) {
-        if (c.state === 'working') map[c.user_id] = { kind: 'working', label: '업무 중' };
+        if (c.state === 'working') map[c.user_id] = { kind: 'working', label: '출근' };
         else if (c.state === 'done') map[c.user_id] = { kind: 'done', label: '퇴근' };
       }
     }

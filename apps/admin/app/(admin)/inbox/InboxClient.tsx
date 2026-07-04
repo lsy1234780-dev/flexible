@@ -15,6 +15,7 @@ import { entityHref, entityChipClass, ENTITY_LABEL } from '@/lib/entityLink';
 import type { MyMention, RecordActivity } from '@/actions/chat';
 import type { UrgentItem } from '@/actions/dashboard';
 import type { TeamSnapshot } from '@/actions/presence';
+import InboxAttendance, { type InboxAttendanceData } from './InboxAttendance';
 
 // 사람 이름 → 항상 같은 색 아바타 (순수 표시용 — 데이터/구조는 안 건드림)
 const AVATAR_COLORS = [
@@ -48,10 +49,11 @@ interface Props {
   activity: RecordActivity[];
   urgent: UrgentItem[];
   snapshot: TeamSnapshot;
+  attendance: InboxAttendanceData | null;
   chatEnabled: boolean;
 }
 
-export default function InboxClient({ mentions, activity, urgent, snapshot, chatEnabled }: Props) {
+export default function InboxClient({ mentions, activity, urgent, snapshot, attendance, chatEnabled }: Props) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('all');
 
@@ -151,9 +153,12 @@ export default function InboxClient({ mentions, activity, urgent, snapshot, chat
           인박스
         </h1>
         <p className="text-xs text-gray-400 mt-0.5">
-          나에게 온 멘션 · 레코드 대화 · 긴급 처리를 한눈에
+          {attendance ? '출퇴근 · ' : ''}나에게 온 멘션 · 레코드 대화 · 긴급 처리를 한눈에
         </p>
       </div>
+
+      {/* 내 근태 — 로그인 후 첫 화면에서 바로 출퇴근 */}
+      {attendance && <InboxAttendance data={attendance} />}
 
       {/* 오늘의 팀 — 휴가·자리비움·다가오는 휴가·진행 중 결재 한눈에 */}
       {(snapshot.onLeave.length > 0 || snapshot.away.length > 0 || snapshot.upcoming.length > 0 || snapshot.pending.length > 0) && (

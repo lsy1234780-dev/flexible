@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import { isAttendanceManagerAction, getTeamTodayStatus, getAttendancePolicy, getHolidays } from '@/actions/attendance';
+import { isAttendanceManagerAction, getTeamTodayStatus, getAttendancePolicy, getHolidays, getTeamWorkTypeStats } from '@/actions/attendance';
 import { getTeamLeaves } from '@/actions/leaves';
 import TeamClient from './TeamClient';
 
@@ -19,11 +19,12 @@ export default async function TeamPage() {
   }
 
   const month = dayjs().startOf('month');
-  const [todayStatus, policy, holidays, monthLeaves] = await Promise.all([
+  const [todayStatus, policy, holidays, monthLeaves, typeStats] = await Promise.all([
     getTeamTodayStatus(),
     getAttendancePolicy(),
     getHolidays(month.year()),
     getTeamLeaves(month.format('YYYY-MM-DD'), month.endOf('month').format('YYYY-MM-DD')),
+    getTeamWorkTypeStats(month.year(), month.month() + 1),
   ]);
 
   return (
@@ -32,6 +33,7 @@ export default async function TeamPage() {
       policy={policy}
       initialHolidays={holidays}
       initialLeaves={monthLeaves}
+      initialTypeStats={typeStats}
     />
   );
 }

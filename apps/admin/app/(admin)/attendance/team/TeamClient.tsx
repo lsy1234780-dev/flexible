@@ -6,11 +6,18 @@
 
 import { useState, useTransition } from 'react';
 import dayjs from 'dayjs';
-import { ChevronLeft, ChevronRight, Users, CalendarDays } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Users, CalendarDays, Building2, House, Briefcase } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { getHolidays, type AttendancePolicy, type TeamMemberStatus } from '@/actions/attendance';
+import { getHolidays, getTeamWorkTypeStats, type AttendancePolicy, type TeamMemberStatus, type WorkTypeStatRow } from '@/actions/attendance';
 import { getTeamLeaves, type TeamLeaveItem } from '@/actions/leaves';
+
+function fmtH(min: number): string {
+  if (!min) return '-';
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `${h}시간 ${m}분` : `${h}시간`;
+}
 
 const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
 const WORK_TYPE_LABEL: Record<string, string> = { office: '사무실', remote: '재택', field: '외근' };
@@ -28,26 +35,38 @@ interface Props {
   policy: AttendancePolicy;
   initialHolidays: { id: string; holiday_date: string; name: string }[];
   initialLeaves: TeamLeaveItem[];
+  initialTypeStats: WorkTypeStatRow[];
 }
 
-export default function TeamClient({ todayStatus, policy, initialHolidays, initialLeaves }: Props) {
+export default function TeamClient({ todayStatus, policy, initialHolidays, initialLeaves, initialTypeStats }: Props) {
   const [, startTransition] = useTransition();
   const [month, setMonth] = useState(dayjs().startOf('month'));
   const [leaves, setLeaves] = useState(initialLeaves);
   const [holidays, setHolidays] = useState(initialHolidays);
+  const [typeStats, setTypeStats] = useState(initialTypeStats);
 
   function moveMonth(diff: number) {
     const next = month.add(diff, 'month');
     setMonth(next);
     startTransition(async () => {
-      const [lvs, hols] = await Promise.all([
+      const [lvs, hols, stats] = await Promise.all([
         getTeamLeaves(next.format('YYYY-MM-DD'), next.endOf('month').format('YYYY-MM-DD')),
         getHolidays(next.year()),
+        getTeamWorkTypeStats(next.year(), next.month() + 1),
       ]);
       setLeaves(lvs);
       setHolidays(hols);
+      setTypeStats(stats);
     });
   }
+
+  // 형태별 팀 합계 (상단 요약 바)
+  const teamTotals = typeStats.reduce(
+    (a, r) => ({ office: a.office + r.office, remote: a.remote + r.remote, field: a.field + r.field }),
+    { office: 0, remote: 0, field: 0 },
+  );
+  const grandTotal = teamTotals.office + teamTotals.remote + teamTotals.field;
+  const pct = (v: number) => (grandTotal ? Math.round((v / grandTotal) * 100) : 0);
 
   const holidayMap = new Map(holidays.map((h) => [h.holiday_date, h.name]));
   function leavesOn(date: string): TeamLeaveItem[] {
@@ -106,6 +125,72 @@ export default function TeamClient({ todayStatus, policy, initialHolidays, initi
             );
           })}
         </div>
+      </div>
+
+      {/* 근무 형태별 집계 — 사무실/재택/외근 개별 수집 (경영진·인사팀 판단용) */}
+      <div className="rounded-xl border bg-white p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="flex items-center gap-1.5 font-semibold text-gray-900 text-sm">
+            <Briefcase size={15} /> 근무 형태별 집계 — {month.format('YYYY년 M월')}
+          </h2>
+          <div className="flex gap-1">
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => moveMonth(-1)}>
+              <ChevronLeft size={16} />
+            </Button>
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => moveMonth(1)}>
+              <ChevronRight size={16} />
+            </Button>
+          </div>
+        </div>
+
+        {grandTotal === 0 ? (
+          <p className="py-6 text-center text-sm text-gray-400">이 달 집계된 근무 기록이 없습니다</p>
+        ) : (
+          <>
+            {/* 팀 합계 비중 바 */}
+            <div className="mb-3">
+              <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-gray-100">
+                {teamTotals.office > 0 && <div className="bg-indigo-500" style={{ width: `${pct(teamTotals.office)}%` }} />}
+                {teamTotals.remote > 0 && <div className="bg-emerald-500" style={{ width: `${pct(teamTotals.remote)}%` }} />}
+                {teamTotals.field > 0 && <div className="bg-amber-500" style={{ width: `${pct(teamTotals.field)}%` }} />}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                <span className="flex items-center gap-1 text-gray-600"><span className="h-2 w-2 rounded-full bg-indigo-500" /><Building2 size={12} /> 사무실 {fmtH(teamTotals.office)} ({pct(teamTotals.office)}%)</span>
+                <span className="flex items-center gap-1 text-gray-600"><span className="h-2 w-2 rounded-full bg-emerald-500" /><House size={12} /> 재택 {fmtH(teamTotals.remote)} ({pct(teamTotals.remote)}%)</span>
+                <span className="flex items-center gap-1 text-gray-600"><span className="h-2 w-2 rounded-full bg-amber-500" /><Briefcase size={12} /> 외근 {fmtH(teamTotals.field)} ({pct(teamTotals.field)}%)</span>
+              </div>
+            </div>
+
+            {/* 팀원별 표 */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-xs text-gray-400">
+                    <th className="py-2 text-left font-medium">팀원</th>
+                    <th className="py-2 text-right font-medium">사무실</th>
+                    <th className="py-2 text-right font-medium">재택</th>
+                    <th className="py-2 text-right font-medium">외근</th>
+                    <th className="py-2 text-right font-medium">합계</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {typeStats.map((r) => (
+                    <tr key={r.user_id} className="border-b last:border-0">
+                      <td className="py-2 font-medium text-gray-900">{r.name}</td>
+                      <td className="py-2 text-right text-gray-600">{fmtH(r.office)}</td>
+                      <td className="py-2 text-right text-gray-600">{fmtH(r.remote)}</td>
+                      <td className="py-2 text-right text-gray-600">{fmtH(r.field)}</td>
+                      <td className="py-2 text-right font-semibold text-gray-900">{fmtH(r.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-[11px] text-gray-400">
+              출퇴근 기록의 근무 형태별 합계입니다. 재출근으로 형태가 바뀌면 세션별로 나눠 집계됩니다.
+            </p>
+          </>
+        )}
       </div>
 
       {/* 부재 현황판 */}

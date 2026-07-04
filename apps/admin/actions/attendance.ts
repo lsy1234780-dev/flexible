@@ -35,6 +35,7 @@ export interface AttendanceRecord {
   session_start_at: string | null; // 현재 열린 세션 시작 — null이면 근무 중 아님
   work_type: 'office' | 'remote' | 'field';
   worked_minutes: number | null;   // 세션 근무시간 누적 합계
+  type_minutes: Record<string, number> | null; // 형태별 누적 (예: {office:240, field:180})
   memo: string | null;
 }
 
@@ -252,12 +253,17 @@ export async function clockOut() {
     : sessionMinutes;
   const total = (record.worked_minutes ?? 0) + addedMinutes;
 
+  // 이번 세션 형태(work_type)에 근무분 귀속 — 형태별 개별 집계
+  const typeMinutes = { ...(record.type_minutes ?? {}) };
+  typeMinutes[record.work_type] = (typeMinutes[record.work_type] ?? 0) + addedMinutes;
+
   const { error } = await supabase
     .from('attendance_records')
     .update({
       clock_out_at: now.toISOString(),
       session_start_at: null,             // 세션 닫음
       worked_minutes: total,
+      type_minutes: typeMinutes,
       updated_at: now.toISOString(),
     })
     .eq('id', record.id);
@@ -416,4 +422,54 @@ export async function getTeamTodayStatus(): Promise<TeamMemberStatus[]> {
       leave_label: null,
     };
   });
+}
+
+// ─── 근무 형태별 집계 (관리자) — 사무실/재택/외근 개별 수집 ───
+
+export interface WorkTypeStatRow {
+  user_id: string;
+  name: string;
+  office: number;  // 분
+  remote: number;
+  field: number;
+  total: number;
+}
+
+// 해당 월 팀원별 근무 형태 분포. 관리자만 (RLS가 이미 팀 전체를 관리자에게만 돌려주지만 명시적으로 게이트).
+export async function getTeamWorkTypeStats(year: number, month: number): Promise<WorkTypeStatRow[]> {
+  if (process.env.PREVIEW_MODE === 'true') return [];
+  const supabase = await createClient();
+  const me = await getCurrentUser();
+  if (!me) return [];
+  if (!(await isAttendanceManagerAction())) return [];
+
+  const start = dayjs(new Date(year, month - 1, 1));
+  const { data } = await supabase
+    .from('attendance_records')
+    .select('user_id, type_minutes, worked_minutes, work_type')
+    .gte('work_date', start.format('YYYY-MM-DD'))
+    .lte('work_date', start.endOf('month').format('YYYY-MM-DD'));
+
+  const members = await getWorkspaceMembers();
+  const nameOf = (id: string) =>
+    members.find((m) => m.user_id === id)?.name ?? (me.id === id ? me.name : '멤버');
+
+  const byUser = new Map<string, WorkTypeStatRow>();
+  for (const r of data ?? []) {
+    let row = byUser.get(r.user_id);
+    if (!row) {
+      row = { user_id: r.user_id, name: nameOf(r.user_id), office: 0, remote: 0, field: 0, total: 0 };
+      byUser.set(r.user_id, row);
+    }
+    // type_minutes가 비어 있으면(진행 중이거나 예전 기록) worked_minutes를 그 날 work_type에 귀속
+    const tm = { ...((r.type_minutes as Record<string, number> | null) ?? {}) };
+    if (Object.keys(tm).length === 0 && r.worked_minutes) tm[r.work_type] = r.worked_minutes;
+    row.office += tm.office ?? 0;
+    row.remote += tm.remote ?? 0;
+    row.field += tm.field ?? 0;
+  }
+
+  return [...byUser.values()]
+    .map((r) => ({ ...r, total: r.office + r.remote + r.field }))
+    .sort((a, b) => b.total - a.total);
 }

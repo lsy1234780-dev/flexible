@@ -216,6 +216,9 @@ company_products 레코드 있음?
 | `/attendance/leaves` | 휴가 신청·잔여·승인 처리 (approvals 연동) | ✅ |
 | `/attendance/team` | 팀 현황·부재 현황판 (근태 관리자 전용) | ✅ |
 | `/attendance/policy` | 근태 정책·공휴일·휴가종류·연차부여·관리자 지정 | ✅ |
+| `/expenses` | 내 경비 (청구 작성·결재·지급 수령확인/이의제기) | ✅ |
+| `/expenses/[id]` | 경비 상세 (라인·영수증·결재·지급 내역서 PDF) | ✅ |
+| `/expenses/finance` | 정산 관리 (재무 담당 전용 — 배치 지급·이의제기 처리·항목·담당자) | ✅ |
 
 ### apps/b2b-portal
 
@@ -541,8 +544,8 @@ feat(admin): 입고지시서 UI 페이지 구현
 
 `supabase/migrations/` 디렉토리에 순번대로 존재. 새 마이그레이션은 다음 번호로 작성:
 ```
-현재 마지막: 079_approvals_one_pending.sql
-다음 작성 시: 080_xxx.sql
+현재 마지막: 084_expense_receipts_storage.sql
+다음 작성 시: 085_xxx.sql
 ```
 
 ---

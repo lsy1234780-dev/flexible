@@ -218,7 +218,11 @@ approved
    락아웃 방지 fallback으로 항상 관리자 지정 가능. (근태 v1에서 구현 — 마이그 080)
 2. **출퇴근 인정 방식 v1 범위** — ✅ 버튼만. (ip/gps 컬럼은 정책 테이블에 예비로 존재, UI 미노출)
 3. **연차 v1 범위** — ✅ 관리자 수동 입력 + 잔여 표시만. used는 저장하지 않고 승인된 신청에서 계산.
-4. **경비 정산 상태머신** — ⏸ 경비 모듈 착수 시 결정 (B안 권장 유지).
+4. **경비 정산 상태머신** — ✅ **B안 확정** (2026-07-04). 회계 트랙(`settle_status`: 재무 이체 즉시
+   지급완료 — 직원 클릭에 인질 안 잡힘)과 수령확인 트랙(`confirm_status`: 확인/이의제기 양방향,
+   14일 무응답은 `auto_closed`="미이의 마감")을 분리. 무응답을 "확인함"으로 기록하지 않고
+   `closed_by`('employee'|'auto')로 경로를 구분. 재무 담당은 `expense_managers` 명시 부여
+   (근태 관리자와 동일 패턴). (경비 v1에서 구현 — 마이그 083~084)
 
 ### 근태 v1 구현 기록 (2026-07-04)
 
@@ -231,6 +235,23 @@ approved
   `/attendance/team`(오늘 보드+부재 현황판), `/attendance/policy`(정책·공휴일·휴가종류·연차부여·관리자, 면책 문구 고정)
 - 인박스: `getUrgentItems`에 관리자용 "출근 전 인원" 알림 추가 (근무일+기준시간 경과+휴가 제외).
 - 대시보드 recharts 위젯은 v1에서 제외 (팀 현황판이 그 역할) — 필요 시 후속.
+
+### 경비 v1 구현 기록 (2026-07-04)
+
+- 마이그레이션: `083_expense_core`, `084_expense_receipts_storage`
+- 구조: 헤더(`expense_claims`) + 라인(`expense_claim_items`) — 구매발주 PO 패턴.
+  두 모드: `reimbursement`(환급) / `corporate_card`(법인카드 사후 등록 — 환급 없음, 증빙만).
+- 결재: `approvals(entity_type='expense')` 재사용. 상태머신 전이(결재/지급/수령확인 3트랙)는
+  전부 DB 트리거(`expense_claims_guard`)가 강제 — 돈이 걸린 전이를 앱 코드에 안 맡김.
+  라인은 draft에서만 수정 가능(`expense_items_guard`).
+- 정산: 재무가 은행 이체 후 배치(`expense_settlement_batches`)로 일괄 지급 처리 + 이체증 첨부.
+  직원에게 수령확인 요청 → 확인/이의제기, 14일 무응답은 lazy 자동마감(cron 없음 — 목록 로드 시 처리).
+- 영수증: `expense-receipts` 비공개 버킷, 경로 기반 RLS(`can_access_expense_object`).
+- RLS: 경비는 본인+재무만 조회 (휴가와 달리 금액·사용처 민감 — 팀 공개 안 함).
+- 페이지: `/expenses`(내 경비+수령확인 배너), `/expenses/[id]`(라인·영수증·결재·RecordThread),
+  `/expenses/finance`(재무 전용 — 지급 대기/이의제기/지급 완료/법인카드/경비 항목/담당자).
+- PDF: 지급 내역서(`/api/expenses/[id]/statement`) — 급여명세서·세무 문서 대체 아님 면책 고정.
+- 인박스: 내 수령확인 D-n + 재무용 이의제기(high)·7일 경과 미지급 노화 알림.
 
 ---
 

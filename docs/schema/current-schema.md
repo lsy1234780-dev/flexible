@@ -618,6 +618,83 @@ leave_balances (    -- 부여량은 관리자 입력. used는 저장 안 함(승
 
 ---
 
+## Expenses (경비, 083~084)
+
+> 설계 배경은 `docs/architecture/HR.md` §5. 흐름: **돈 씀 → 증빙 → 신청 → 결재 → 정산.**
+> 정산 상태머신 = B안 (오너 확정 2026-07-04): 회계 트랙과 수령확인 트랙 분리.
+> 재무 담당 = `expense_managers` 명시 부여 (+ owner fallback) — 근태와 동일 패턴, anon+RLS.
+
+### expense_managers (재무 담당 — 명시적 권한 부여)
+
+```sql
+expense_managers (
+  workspace_id, user_id, granted_by, granted_by_name, created_at,
+  PRIMARY KEY (workspace_id, user_id)
+)
+-- helper: is_expense_manager(p_ws) — 등록자 or workspace owner(락아웃 방지)
+```
+
+### expense_categories (경비 항목 — 회사 정의)
+
+```sql
+expense_categories ( id uuid PK, workspace_id, name, sort_order )
+-- 시드: 교통/식대/숙박/접대/소모품/기타 (seed_default_expense_categories, 멱등)
+```
+
+### expense_claims (경비 신청 헤더) + expense_claim_items (라인)
+
+```sql
+expense_claims (
+  id uuid PK, workspace_id, user_id, user_name(스냅샷), title,
+  claim_kind text,                      -- 'reimbursement'(환급) | 'corporate_card'(증빙만)
+  total_amount numeric,                 -- 라인 합계 (draft 중 서버 재계산)
+  -- ① 결재 트랙 (approvals 동기화)
+  status text DEFAULT 'draft',          -- draft|pending|approved|rejected|cancelled
+  -- ② 회계 트랙 (B안): 재무가 이체하면 즉시 지급완료 — 직원 클릭에 인질 안 잡힘
+  settle_status text,                   -- none(법인카드)|unpaid|paid
+  settlement_batch_id, paid_at,
+  -- ③ 수령확인 트랙 (B안): 확인/이의제기 + 14일 무응답 = "미이의 마감"
+  confirm_status text DEFAULT 'none',   -- none|awaiting|confirmed|disputed|auto_closed
+  confirm_due_at, confirmed_at,
+  closed_by text,                       -- 'employee'|'auto' — 무응답을 '확인함'으로 기록하지 않음
+  dispute_note text
+)
+-- 트리거 approvals_sync_expense: 결재 결정 → status 동기화 (GUC app.expense_sync).
+-- 트리거 expense_claims_guard: 상태머신 전이를 DB에서 강제
+--   (결재: 요청자 draft→pending, draft/pending→cancelled만 / 지급: 재무만, 승인된 환급 건만
+--    unpaid↔paid / 수령확인: 소유자 confirmed·disputed, 재무 awaiting·none, auto는 기한 경과+closed_by='auto').
+-- 트리거 expense_items_guard: 라인은 draft에서만 추가/수정/삭제.
+-- RLS: select 본인 + 재무 담당만 (휴가와 달리 금액·사용처 민감 — 팀 공개 안 함).
+
+expense_claim_items (
+  id uuid PK, workspace_id, claim_id, category_id,
+  amount numeric CHECK (> 0), vat_amount, spent_at date,
+  merchant, payment_method('personal'|'corporate_card'),
+  receipt_path, receipt_name,           -- expense-receipts 버킷
+  memo
+)
+```
+
+### expense_settlement_batches (정산 배치 — 재무 전용)
+
+```sql
+expense_settlement_batches (
+  id uuid PK, workspace_id, title, transfer_date date, note,
+  proof_path, proof_name,               -- 이체증 ({ws}/batch/… 경로)
+  created_by, created_by_name
+)
+```
+
+### Storage: expense-receipts (084, 비공개 버킷)
+
+- 영수증 `{ws}/{claim_id}/{uuid}-{file}` — 읽기: 소유자+재무 / 쓰기: 소유자 draft만
+- 이체증 `{ws}/batch/{uuid}-{file}` — 재무 담당만
+- 접근 판정: `can_access_expense_object(p_name, p_write)` 헬퍼 하나로 storage.objects 정책 처리
+
+**무응답 자동마감:** cron 없이 lazy — 목록 로드 시(`getMyClaims`/`getFinanceClaims`) 기한 지난 awaiting을 auto_closed 처리.
+
+---
+
 ## 마이그레이션 파일 목록
 
 | # | 파일 | 내용 |
@@ -704,5 +781,7 @@ leave_balances (    -- 부여량은 관리자 입력. used는 저장 안 함(승
 | 080 | attendance_core | 근태 코어: attendance_managers(명시적 권한 부여)/policy/records/holidays + is_attendance_manager |
 | 081 | attendance_leaves | 휴가: leave_types(시드)/requests/balances + approvals 동기화·가드 트리거 |
 | 082 | attendance_fn_hardening | 근태 트리거 함수 EXECUTE 회수 + search_path 고정 (어드바이저 반영) |
+| 083 | expense_core | 경비 코어: expense_managers(명시 부여)/categories(시드)/claims(3트랙 상태머신)/items/settlement_batches + 가드·동기화 트리거 |
+| 084 | expense_receipts_storage | expense-receipts 비공개 버킷 + 경로 기반 접근 헬퍼(영수증/이체증) |
 
-**다음 마이그레이션:** `083_xxx.sql`
+**다음 마이그레이션:** `085_xxx.sql`

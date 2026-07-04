@@ -16,6 +16,8 @@ import {
 } from '@/actions/chat';
 import { entityHref } from '@/lib/entityLink';
 import { MessageItem, Composer, ContextPanel, type Message, type Mention, type QuotedMessage } from '@/components/chat/ChatParts';
+import { PresenceBadge, MyStatusControl } from '@/components/chat/Presence';
+import { getPresenceMap, type PresenceMap, type PresenceInfo } from '@/actions/presence';
 import type { Channel } from './page';
 
 interface Member { user_id: string; name: string; email: string; department: string | null }
@@ -44,7 +46,14 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
   const [forwardState, setForwardState] = useState<{ msg: Message; coords: { left: number; top: number } } | null>(null);
   const [composerQuote, setComposerQuote] = useState<QuotedMessage | null>(null);
   const [contextOpen, setContextOpen] = useState(false);
+  const [presence, setPresence] = useState<PresenceMap>({});
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // 부재 표시 (휴가 자동 + 본인 설정 상태) — 자주 안 바뀌므로 진입 시 1회
+  const loadPresence = useCallback(() => {
+    getPresenceMap().then(setPresence).catch(() => {});
+  }, []);
+  useEffect(() => { loadPresence(); }, [loadPresence]);
 
   const loadMentions = useCallback(async () => {
     try { setMentions(await getMyMentions()); } catch { /* noop */ }
@@ -184,7 +193,10 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
       <aside className="w-56 flex-shrink-0 border-r bg-gray-50 flex flex-col">
         {/* 상단: 멘션 알림 */}
         <div className="relative flex items-center justify-between border-b px-3 h-11">
-          <span className="text-sm font-bold text-gray-800">메시지</span>
+          <span className="flex items-center gap-1.5 min-w-0">
+            <span className="text-sm font-bold text-gray-800">메시지</span>
+            <MyStatusControl onChanged={loadPresence} />
+          </span>
           <button
             onClick={() => setMentionsOpen((v) => !v)}
             className={cn('relative p-1 rounded transition-colors', mentionsOpen ? 'bg-gray-200 text-gray-800' : 'text-gray-400 hover:text-gray-700')}
@@ -248,11 +260,15 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
           <div>
             <div className="flex items-center justify-between px-2 mb-1">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">다이렉트 메시지</span>
-              <MemberPicker onPick={handleStartDM} />
+              <MemberPicker onPick={handleStartDM} presence={presence} />
             </div>
             <div className="space-y-0.5">
               {dms.map((c) => (
-                <ChannelRow key={c.id} c={c} active={activeId === c.id} onClick={() => setActiveId(c.id)} icon={<User size={14} className="flex-shrink-0 opacity-60" />} />
+                <ChannelRow
+                  key={c.id} c={c} active={activeId === c.id} onClick={() => setActiveId(c.id)}
+                  icon={<User size={14} className="flex-shrink-0 opacity-60" />}
+                  badge={c.partner_id ? presence[c.partner_id] : null}
+                />
               ))}
               {dms.length === 0 && <p className="px-2 py-2 text-xs text-gray-400">대화 없음</p>}
             </div>
@@ -265,6 +281,9 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
         <div className="flex items-center gap-1.5 px-4 h-12 border-b">
           {active?.kind === 'dm' ? <User size={16} className="text-gray-400" /> : <Hash size={16} className="text-gray-400" />}
           <span className="font-semibold text-gray-900">{active ? channelLabel(active) : '채널 선택'}</span>
+          {active?.kind === 'dm' && active.partner_id && (
+            <PresenceBadge info={presence[active.partner_id]} />
+          )}
           <button
             onClick={() => { setContextOpen((v) => !v); setThreadParent(null); }}
             className={cn('ml-auto p-1.5 rounded transition-colors', contextOpen ? 'bg-gray-900 text-white' : 'text-gray-400 hover:text-gray-700')}
@@ -313,6 +332,7 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
           coords={forwardState.coords}
           onPick={handleForwardPick}
           onClose={() => setForwardState(null)}
+          presence={presence}
         />
       )}
 
@@ -364,10 +384,11 @@ export default function ChatClient({ channels: initialChannels, meId, meName, in
 }
 
 // ─── DM 전달용 멤버 피커 (portal, fixed 좌표) ───
-function ForwardMemberPicker({ coords, onPick, onClose }: {
+function ForwardMemberPicker({ coords, onPick, onClose, presence }: {
   coords: { left: number; top: number };
   onPick: (userId: string) => void;
   onClose: () => void;
+  presence: PresenceMap;
 }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -414,7 +435,10 @@ function ForwardMemberPicker({ coords, onPick, onClose }: {
                 {m.name.slice(0, 1)}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-gray-800">{m.name}</span>
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className="truncate text-sm text-gray-800">{m.name}</span>
+                  <PresenceBadge info={presence[m.user_id]} />
+                </span>
                 <span className="block truncate text-[11px] text-gray-400">{m.department ?? '소속 없음'}</span>
               </span>
             </button>
@@ -431,7 +455,9 @@ function ForwardMemberPicker({ coords, onPick, onClose }: {
 }
 
 // ─── 채널/DM 한 줄 ───
-function ChannelRow({ c, active, onClick, icon }: { c: Channel; active: boolean; onClick: () => void; icon: React.ReactNode }) {
+function ChannelRow({ c, active, onClick, icon, badge }: {
+  c: Channel; active: boolean; onClick: () => void; icon: React.ReactNode; badge?: PresenceInfo | null;
+}) {
   const unread = c.unread ?? 0;
   return (
     <button
@@ -444,6 +470,7 @@ function ChannelRow({ c, active, onClick, icon }: { c: Channel; active: boolean;
     >
       {icon}
       <span className="truncate flex-1 text-left">{channelLabel(c)}</span>
+      {badge && <PresenceBadge info={badge} />}
       {!active && unread > 0 && (
         <span className="flex-shrink-0 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
           {unread > 99 ? '99+' : unread}
@@ -455,7 +482,7 @@ function ChannelRow({ c, active, onClick, icon }: { c: Channel; active: boolean;
 
 // ─── DM 시작용 멤버 피커 (검색 + 소속 표시) ───
 // 드롭다운은 사이드바 overflow에 짤리지 않도록 portal로 body에 fixed 렌더.
-function MemberPicker({ onPick }: { onPick: (userId: string) => void }) {
+function MemberPicker({ onPick, presence }: { onPick: (userId: string) => void; presence: PresenceMap }) {
   const [open, setOpen] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -522,7 +549,10 @@ function MemberPicker({ onPick }: { onPick: (userId: string) => void }) {
                     {m.name.slice(0, 1)}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-gray-800">{m.name}</span>
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      <span className="truncate text-sm text-gray-800">{m.name}</span>
+                      <PresenceBadge info={presence[m.user_id]} />
+                    </span>
                     <span className="block truncate text-[11px] text-gray-400">{m.department ?? '소속 없음'}</span>
                   </span>
                 </button>

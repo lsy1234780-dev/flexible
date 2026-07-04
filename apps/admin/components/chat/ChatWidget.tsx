@@ -22,8 +22,10 @@ import {
   editMessage, deleteMessage, getMyMentions,
 } from '@/actions/chat';
 import { getCurrentUser } from '@/actions/auth';
+import { PresenceBadge, MyStatusControl } from '@/components/chat/Presence';
+import { getPresenceMap, type PresenceMap } from '@/actions/presence';
 
-interface Ch { id: string; name: string; kind: string; partner_name?: string | null; unread?: number }
+interface Ch { id: string; name: string; kind: string; partner_id?: string | null; partner_name?: string | null; unread?: number }
 const chLabel = (c: Ch | undefined | null) => (!c ? '' : c.kind === 'dm' ? (c.partner_name ?? '다이렉트 메시지') : c.name);
 
 export default function ChatWidget() {
@@ -39,6 +41,7 @@ export default function ChatWidget() {
   const [unreadMentions, setUnreadMentions] = useState(0);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [threadParent, setThreadParent] = useState<string | null>(null);
+  const [presence, setPresence] = useState<PresenceMap>({});
   const bottomRef = useRef<HTMLDivElement>(null);
   const threadBottomRef = useRef<HTMLDivElement>(null);
 
@@ -92,6 +95,7 @@ export default function ChatWidget() {
     loadChannels().then((rows) => {
       setActiveId((prev) => channelId ?? prev ?? rows[0]?.id ?? null);
     });
+    getPresenceMap().then(setPresence).catch(() => {});
   }, [open, channelId, loadChannels]);
 
   // 활성 채널 메시지 로드 + 읽음 (채널 전환 시 보던 스레드 패널은 닫음 — /chat과 동일 동작)
@@ -162,9 +166,13 @@ export default function ChatWidget() {
               >
                 {active?.kind === 'dm' ? <User size={14} className="text-gray-400" /> : <Hash size={14} className="text-gray-400" />}
                 <span className="truncate text-sm font-semibold text-gray-800">{active ? chLabel(active) : '채널 선택'}</span>
-                <ChevronDown size={13} className="text-gray-400" />
+                {active?.kind === 'dm' && active.partner_id && (
+                  <PresenceBadge info={presence[active.partner_id]} />
+                )}
+                <ChevronDown size={13} className="text-gray-400 flex-shrink-0" />
               </button>
-              <div className="ml-auto flex items-center gap-0.5">
+              <div className="ml-auto flex items-center gap-1">
+                <MyStatusControl onChanged={() => getPresenceMap().then(setPresence).catch(() => {})} />
                 <button onClick={() => router.push(activeId ? `/chat?channel=${activeId}` : '/chat')} className="p-1.5 text-gray-400 hover:text-gray-700" title="전체 화면">
                   <Maximize2 size={15} />
                 </button>
@@ -186,6 +194,7 @@ export default function ChatWidget() {
                       >
                         {c.kind === 'dm' ? <User size={13} className="text-gray-400" /> : <Hash size={13} className="text-gray-400" />}
                         <span className="truncate flex-1">{chLabel(c)}</span>
+                        {c.kind === 'dm' && c.partner_id && <PresenceBadge info={presence[c.partner_id]} />}
                         {(c.unread ?? 0) > 0 && activeId !== c.id && (
                           <span className="rounded-full bg-red-500 px-1.5 text-[10px] font-semibold text-white">{c.unread}</span>
                         )}

@@ -544,8 +544,8 @@ feat(admin): 입고지시서 UI 페이지 구현
 
 `supabase/migrations/` 디렉토리에 순번대로 존재. 새 마이그레이션은 다음 번호로 작성:
 ```
-현재 마지막: 084_expense_receipts_storage.sql
-다음 작성 시: 085_xxx.sql
+현재 마지막: 085_member_presence.sql
+다음 작성 시: 086_xxx.sql
 ```
 
 ---

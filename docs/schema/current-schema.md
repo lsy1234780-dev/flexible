@@ -695,6 +695,25 @@ expense_settlement_batches (
 
 ---
 
+## Presence (부재 표시, 085)
+
+> 채팅·미니채팅에서 상대 이름 옆에 부재 배지. 감시 아님 — 휴가는 승인에서 자동 파생, 상태는 본인만 설정.
+
+```sql
+member_statuses (            -- 자리비움/외근 등 본인 설정 상태
+  workspace_id, user_id, label text,
+  set_on date DEFAULT current_date,   -- 당일만 유효 (다음날 자동 무효 — 해제 잊어도 안 남음)
+  PRIMARY KEY (workspace_id, user_id)
+)
+-- RLS: select 멤버 전체 / insert·update·delete 본인 행만
+```
+
+- **휴가 배지**: 저장 안 함 — `getPresenceMap()`이 승인된 leave_requests(오늘 포함)에서 파생. 휴가 > 상태 우선.
+- `get_my_channels()`에 `partner_id` 컬럼 추가 (DM 상대에 배지 붙이기 위해 — 085에서 drop 후 재생성).
+- UI: `components/chat/Presence.tsx` (PresenceBadge + MyStatusControl), `/chat` 사이드바·DM헤더·멤버피커 + 미니 위젯.
+
+---
+
 ## 마이그레이션 파일 목록
 
 | # | 파일 | 내용 |
@@ -783,5 +802,6 @@ expense_settlement_batches (
 | 082 | attendance_fn_hardening | 근태 트리거 함수 EXECUTE 회수 + search_path 고정 (어드바이저 반영) |
 | 083 | expense_core | 경비 코어: expense_managers(명시 부여)/categories(시드)/claims(3트랙 상태머신)/items/settlement_batches + 가드·동기화 트리거 |
 | 084 | expense_receipts_storage | expense-receipts 비공개 버킷 + 경로 기반 접근 헬퍼(영수증/이체증) |
+| 085 | member_presence | 부재 표시: member_statuses(본인 설정, 당일만) + get_my_channels에 partner_id 추가 |
 
-**다음 마이그레이션:** `085_xxx.sql`
+**다음 마이그레이션:** `086_xxx.sql`

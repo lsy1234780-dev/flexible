@@ -134,13 +134,21 @@ export async function getUrgentItems(): Promise<UrgentItem[]> {
     });
   }
 
+  // 결재 유형별 라벨 — "휴가 신청이 왔는지"가 승인자 인박스에 바로 드러나게 유형을 앞세운다.
+  const APPROVAL_KIND_LABEL: Record<string, string> = {
+    leave: '휴가 신청', overtime: '초과근무 신청', expense: '경비 청구',
+    order: '수주 확정', purchase_order: '구매발주 확정',
+  };
   type ApprovalRow = { id: string; entity_type: string; entity_id: string; entity_label: string | null; requested_by_name: string | null; created_at: string };
   for (const ap of (myApprovals.data ?? []) as ApprovalRow[]) {
     const href = entityHref(ap.entity_type, ap.entity_id);
+    const kindLabel = APPROVAL_KIND_LABEL[ap.entity_type] ?? '결재';
     items.push({
       id: `approval-${ap.id}`,
-      label: `승인 요청: ${ap.entity_label ?? '레코드'}`,
-      sub: `${ap.requested_by_name ?? '요청자'} 님이 승인을 기다립니다`,
+      label: `${kindLabel} 승인 요청`,
+      sub: ap.entity_label
+        ? `${ap.entity_label} · ${ap.requested_by_name ?? '요청자'} 님 대기`
+        : `${ap.requested_by_name ?? '요청자'} 님이 승인을 기다립니다`,
       href: href !== '#' ? href : '/inbox',
       level: 'high',
       kind: 'approval',

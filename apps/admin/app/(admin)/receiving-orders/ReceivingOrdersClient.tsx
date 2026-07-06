@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { createReceivingOrder } from '@/actions/receiving';
+import { createReceivingOrder, deleteReceivingOrder } from '@/actions/receiving';
 import dayjs from 'dayjs';
 
 interface ReceivingItem {
@@ -129,6 +129,20 @@ export default function ReceivingOrdersClient({ orders, products }: Props) {
       const result = await createReceivingOrder(title, items, memo);
       if (result.error) toast.error(result.error);
       else { toast.success('입고지시서 생성 완료'); resetForm(); router.refresh(); }
+    });
+  }
+
+  // 삭제/취소 — 확정 완료건은 재고까지 복원되므로 상태에 맞춰 경고 문구를 다르게 보여준다.
+  function handleDelete(order: ReceivingOrder) {
+    const isConfirmed = order.status === 'completed';
+    const msg = isConfirmed
+      ? `"${order.title ?? '입고지시서'}"를 취소하면 반영된 재고와 시리얼이 복원됩니다. 계속하시겠습니까?`
+      : `"${order.title ?? '입고지시서'}"를 삭제하시겠습니까?`;
+    if (!confirm(msg)) return;
+    startTransition(async () => {
+      const result = await deleteReceivingOrder(order.id);
+      if (result.error) toast.error(result.error);
+      else { toast.success(isConfirmed ? '취소 및 재고 복원 완료' : '삭제 완료'); router.refresh(); }
     });
   }
 
@@ -314,9 +328,11 @@ export default function ReceivingOrdersClient({ orders, products }: Props) {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      // TODO: 삭제 기능
+                      handleDelete(order);
                     }}
-                    className="p-1 text-gray-300 hover:text-red-500 transition-colors shrink-0"
+                    disabled={isPending}
+                    className="p-1 text-gray-300 hover:text-red-500 transition-colors shrink-0 disabled:opacity-40"
+                    title={order.status === 'completed' ? '취소 (재고 복원)' : '삭제'}
                   >
                     <Trash2 size={16} />
                   </button>

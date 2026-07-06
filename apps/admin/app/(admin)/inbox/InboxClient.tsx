@@ -1,13 +1,13 @@
 'use client';
 
-// 통합 인박스 피드 — 멘션 · 레코드 스레드 활동 · ERP 긴급 이벤트.
-// 각 항목 클릭 시 그 일이 일어난 곳(레코드 상세 / 채팅 채널 / ERP 화면)으로 이동한다.
+// 통합 인박스 — "오늘의 업무"(실제 ERP 처리 대상)를 상단 보드로 한눈에 보여주고,
+// 아래는 소통 피드(멘션·레코드 대화)로 분리한다. 각 항목 클릭 시 그 레코드/채널로 이동.
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
 import {
-  Inbox, AtSign, MessagesSquare, AlertTriangle, Hash, User, Bot, ChevronRight,
+  Inbox, AtSign, MessagesSquare, Hash, User, Bot, ChevronRight,
   TreePalm, CircleMinus, CalendarDays, CircleEllipsis, Receipt,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -16,7 +16,11 @@ import type { MyMention, RecordActivity } from '@/actions/chat';
 import type { UrgentItem } from '@/actions/dashboard';
 import type { TeamSnapshot } from '@/actions/presence';
 import type { MyExpenseFlowItem } from '@/actions/expenses';
+import type { MyDayBriefing, ManagerAttendanceSnapshot } from '@/actions/inbox';
 import InboxAttendance, { type InboxAttendanceData } from './InboxAttendance';
+import InboxMyDay from './InboxMyDay';
+import InboxWorkBoard from './InboxWorkBoard';
+import InboxTeamAttendance from './InboxTeamAttendance';
 
 // 사람 이름 → 항상 같은 색 아바타 (순수 표시용 — 데이터/구조는 안 건드림)
 const AVATAR_COLORS = [
@@ -29,15 +33,15 @@ function avatarColor(name: string): string {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-type Tab = 'all' | 'mentions' | 'records' | 'urgent';
+type Tab = 'all' | 'mentions' | 'records';
 
 interface FeedItem {
   key: string;
-  kind: 'mention' | 'record' | 'urgent';
+  kind: 'mention' | 'record';
   title: string;            // 누가 / 무엇이
   where: string | null;     // 어디서 (#채널, 레코드 라벨)
   body: string;
-  time: string | null;      // ISO — urgent는 null
+  time: string | null;      // ISO
   unread: boolean;
   isSystem: boolean;
   href: string;
@@ -52,10 +56,12 @@ interface Props {
   snapshot: TeamSnapshot;
   attendance: InboxAttendanceData | null;
   myExpenses: MyExpenseFlowItem[];
+  briefing: MyDayBriefing | null;
+  teamAttendance: ManagerAttendanceSnapshot | null;
   chatEnabled: boolean;
 }
 
-export default function InboxClient({ mentions, activity, urgent, snapshot, attendance, myExpenses, chatEnabled }: Props) {
+export default function InboxClient({ mentions, activity, urgent, snapshot, attendance, myExpenses, briefing, teamAttendance, chatEnabled }: Props) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('all');
 
@@ -104,43 +110,25 @@ export default function InboxClient({ mentions, activity, urgent, snapshot, atte
     // 시간순 정렬 (멘션+레코드)
     list.sort((x, y) => dayjs(y.time ?? 0).valueOf() - dayjs(x.time ?? 0).valueOf());
 
-    // 긴급은 맨 위 고정
-    const urgentItems: FeedItem[] = urgent.map((u) => ({
-      key: `urgent-${u.id}`,
-      kind: 'urgent',
-      title: u.label,
-      where: null,
-      body: u.sub,
-      time: null,
-      unread: u.level === 'high',
-      isSystem: true,
-      href: u.href,
-      entityType: null,
-      entityLabel: null,
-    }));
-
-    return [...urgentItems, ...list];
-  }, [mentions, activity, urgent]);
+    return list;
+  }, [mentions, activity]);
 
   const filtered = items.filter((i) => {
     if (tab === 'all') return true;
     if (tab === 'mentions') return i.kind === 'mention';
-    if (tab === 'records') return i.kind === 'record';
-    return i.kind === 'urgent';
+    return i.kind === 'record';
   });
 
   const counts = {
     all: items.length,
     mentions: items.filter((i) => i.kind === 'mention').length,
     records: items.filter((i) => i.kind === 'record').length,
-    urgent: items.filter((i) => i.kind === 'urgent').length,
   };
 
   const TABS: { key: Tab; label: string; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
     { key: 'all', label: '전체', icon: Inbox },
     { key: 'mentions', label: '멘션', icon: AtSign },
     { key: 'records', label: '레코드 대화', icon: MessagesSquare },
-    { key: 'urgent', label: '긴급', icon: AlertTriangle },
   ];
 
   function open(item: FeedItem) {
@@ -155,12 +143,28 @@ export default function InboxClient({ mentions, activity, urgent, snapshot, atte
           인박스
         </h1>
         <p className="text-xs text-gray-400 mt-0.5">
-          {attendance ? '출퇴근 · ' : ''}나에게 온 멘션 · 레코드 대화 · 긴급 처리를 한눈에
+          {attendance ? '출퇴근 · ' : ''}오늘의 업무 · 멘션 · 레코드 대화를 한눈에
         </p>
       </div>
 
+      {/* 내 하루 — 오늘 할 일(승인 대기·내 신청) + 알아둘 것(휴가 D-day·연차) */}
+      {briefing && (
+        <InboxMyDay
+          data={briefing}
+          onReviewApprovals={() =>
+            document.getElementById('inbox-work')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
+        />
+      )}
+
       {/* 내 근태 — 로그인 후 첫 화면에서 바로 출퇴근 */}
       {attendance && <InboxAttendance data={attendance} />}
+
+      {/* 오늘 팀 출근 현황 — 근태 관리자에게만 (휴가자 제외 미출근 강조) */}
+      {teamAttendance && <InboxTeamAttendance data={teamAttendance} />}
+
+      {/* 오늘의 업무 — 실제 ERP 처리 대상(승인·수주·견적·A/S·재고)을 한눈에 */}
+      <InboxWorkBoard items={urgent} />
 
       {/* 내 경비 진행 — 승인 상태에 따라 유기적으로 표시(결재 대기·지급 대기), 완료되면 사라짐 */}
       {myExpenses.length > 0 && (
@@ -269,6 +273,12 @@ export default function InboxClient({ mentions, activity, urgent, snapshot, atte
         </div>
       )}
 
+      {/* 소통 — 멘션 · 레코드 대화 (업무 보드와 시각적으로 구분) */}
+      <div className="flex items-center gap-2 pt-1">
+        <MessagesSquare size={15} className="text-gray-400" />
+        <p className="text-sm font-bold text-gray-900">대화 · 멘션</p>
+      </div>
+
       {/* 탭 */}
       <div className="flex gap-1.5 overflow-x-auto pb-0.5">
         {TABS.map(({ key, label, icon: Icon }) => (
@@ -321,12 +331,8 @@ export default function InboxClient({ mentions, activity, urgent, snapshot, atte
                 <span className="absolute left-1.5 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-blue-500" />
               )}
 
-              {/* 아이콘 — 긴급은 알림 색, 시스템은 봇, 나머지는 이름 이니셜 아바타 */}
-              {item.kind === 'urgent' ? (
-                <span className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-red-500 text-white shadow-sm">
-                  <AlertTriangle size={16} />
-                </span>
-              ) : item.isSystem ? (
+              {/* 아이콘 — 시스템(봇)은 봇 아이콘, 나머지는 이름 이니셜 아바타 */}
+              {item.isSystem ? (
                 <span className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-400">
                   <Bot size={15} />
                 </span>

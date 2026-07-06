@@ -4,6 +4,7 @@ import { getEnabledModules } from '@/actions/modules';
 import { getTeamSnapshot } from '@/actions/presence';
 import { getMyTodayRecord, getAttendancePolicy, getMyWeeklySummary } from '@/actions/attendance';
 import { getMyExpenseFlow } from '@/actions/expenses';
+import { getMyDayBriefing, getManagerAttendanceSnapshot } from '@/actions/inbox';
 import InboxClient from './InboxClient';
 import type { InboxAttendanceData } from './InboxAttendance';
 
@@ -18,7 +19,7 @@ export default async function InboxPage() {
   const attendanceOn = enabled.includes('attendance');
   const expensesOn = enabled.includes('expenses');
 
-  const [mentions, activity, urgent, snapshot, attendance, myExpenses] = await Promise.all([
+  const [mentions, activity, urgent, snapshot, attendance, myExpenses, briefing, teamAttendance] = await Promise.all([
     chatOn ? getMyMentions(30).catch(() => []) : Promise.resolve([]),
     chatOn ? getRecordActivity(30).catch(() => []) : Promise.resolve([]),
     getUrgentItems().catch(() => []),
@@ -29,6 +30,8 @@ export default async function InboxPage() {
           .catch(() => null)
       : Promise.resolve(null),
     expensesOn ? getMyExpenseFlow() : Promise.resolve([]),
+    getMyDayBriefing().catch(() => null),
+    attendanceOn ? getManagerAttendanceSnapshot().catch(() => null) : Promise.resolve(null),
   ]);
 
   return (
@@ -39,6 +42,8 @@ export default async function InboxPage() {
       snapshot={snapshot}
       attendance={attendance}
       myExpenses={myExpenses}
+      briefing={briefing}
+      teamAttendance={teamAttendance}
       chatEnabled={chatOn}
     />
   );

@@ -17,6 +17,7 @@ B2B 발주·물류·CRM 통합 ERP 전산망.
 ```
 erp-workspace/
 ├── apps/
+│   ├── landing/        # 플랫폼 랜딩페이지 (Next.js 16, 정적 — DB/인증 없음, CTA는 admin으로 연결)
 │   ├── admin/          # 내부 어드민 (Next.js 16)
 │   ├── b2b-portal/     # B2B 업체용 포털 (Next.js 16)
 │   └── logistics/      # 물류팀 전용 화면 (Next.js 16, PWA)
@@ -191,6 +192,9 @@ company_products 레코드 있음?
 | 경로 | 기능 | 상태 |
 |------|------|------|
 | `/login` | 관리자 로그인 | ✅ |
+| `/signup` | 회원가입 (Google → 온보딩으로) | ✅ |
+| `/join` | 초대코드로 기존 워크스페이스 합류 (공개 경로, 094) | ✅ |
+| `/onboarding` | 새 워크스페이스 생성 (회사명·slug) | ✅ |
 | `/products` | 제품 목록, 바코드 생성, 기본단가 | ✅ |
 | `/products/[id]` | 제품 상세, 재고 이력, 시리얼 관리 | ✅ |
 | `/categories` | 카테고리 관리 | ✅ |
@@ -249,6 +253,16 @@ company_products 레코드 있음?
 | `/history` | 4차 | 입출고 처리 이력 | ✅ |
 
 **주의:** PWA 매니페스트/서비스워커는 아직 없음 — 코드는 일반 반응형 웹으로 동작하고, `docs/architecture/platform-strategy.md`가 말하는 "PWA/오프라인 지원"은 아직 이 단계에 도달하지 않았음.
+
+### apps/landing
+
+플랫폼(SaaS) 마케팅 랜딩페이지. **DB·인증 없음**, 완전 정적. 모든 CTA는 `NEXT_PUBLIC_APP_URL`(admin 앱)로 연결:
+"무료로 시작" → `/signup`(새 워크스페이스), "초대코드로 팀 합류" → `/join`(기존 회사 직원).
+구축형 배포에는 이 앱을 배포하지 않는다. dev 포트 3000.
+
+| 경로 | 기능 | 상태 |
+|------|------|------|
+| `/` | 랜딩 (히어로·모듈 스트립·기능·두 갈래 시작·구축형 문의) | ✅ |
 
 ---
 
@@ -544,8 +558,8 @@ feat(admin): 입고지시서 UI 페이지 구현
 
 `supabase/migrations/` 디렉토리에 순번대로 존재. 새 마이그레이션은 다음 번호로 작성:
 ```
-현재 마지막: 090_overtime.sql
-다음 작성 시: 091_xxx.sql
+현재 마지막: 094_workspace_invites.sql
+다음 작성 시: 095_xxx.sql
 ```
 
 ---

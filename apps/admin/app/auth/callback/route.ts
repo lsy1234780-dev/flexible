@@ -46,10 +46,13 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${origin}/onboarding`);
     }
 
-    // 로그인 흐름의 비멤버 → 초대제 차단
-    await supabase.auth.signOut();
-    const msg = '초대받지 않은 계정입니다. 관리자에게 문의하거나 회원가입을 진행하세요.';
-    return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(msg)}`);
+    if (flow === 'join') {
+      // 팀 합류 흐름 → 초대코드 입력으로
+      return NextResponse.redirect(`${origin}/join`);
+    }
+
+    // 일반 로그인으로 들어온 비멤버 → 선택 화면(새 워크스페이스 도입 / 초대코드 합류)
+    return NextResponse.redirect(`${origin}/welcome`);
   }
 
   return NextResponse.redirect(`${origin}/login`);

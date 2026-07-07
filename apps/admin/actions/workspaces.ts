@@ -1,6 +1,7 @@
 'use server';
 
 import { createAdminClient, createClient } from '@/lib/supabase/server';
+import { ALL_MODULE_KEYS } from '@/lib/modules';
 import { z } from 'zod';
 
 // 멀티테넌시 Phase 2 — 신규 워크스페이스(테넌트) 가입 흐름
@@ -122,16 +123,23 @@ const OnboardSchema = z.object({
     .string()
     .min(2, 'slug는 2자 이상이어야 합니다')
     .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/, 'slug는 영소문자/숫자/하이픈만 가능합니다'),
+  // 온보딩 위저드의 모듈 조합 — key는 ALL_MODULE_KEYS로 화이트리스트 필터
+  modules: z.array(z.object({ key: z.string().min(1), enabled: z.boolean() })).optional(),
 });
 
 // 구글 OAuth로 이미 인증된 유저가 자기 워크스페이스를 생성(온보딩).
 // registerWorkspace와 달리 auth 유저를 새로 만들지 않고 현재 세션 유저를 owner로 등록.
-export async function createWorkspaceForCurrentUser(input: { companyName: string; slug: string }) {
+// modules를 주면 생성 직후 set_workspace_module로 조합을 반영한다(오너 권한, RPC가 판정).
+export async function createWorkspaceForCurrentUser(input: {
+  companyName: string;
+  slug: string;
+  modules?: { key: string; enabled: boolean }[];
+}) {
   const parsed = OnboardSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0].message };
   }
-  const { companyName, slug } = parsed.data;
+  const { companyName, slug, modules } = parsed.data;
 
   // 오너 패턴: service role 없이 SECURITY DEFINER 함수로 워크스페이스 생성(anon+세션).
   // 함수가 auth.uid()로 호출자를 식별 → workspace + owner 멤버십 + 모듈 시드.
@@ -146,6 +154,19 @@ export async function createWorkspaceForCurrentUser(input: { companyName: string
     if (error.message.includes('INVALID_SLUG')) return { error: 'slug는 영소문자/숫자/하이픈만 가능합니다.' };
     if (error.message.includes('NOT_AUTHENTICATED')) return { error: '로그인이 필요합니다.' };
     return { error: error.message };
+  }
+
+  // 위저드에서 고른 모듈 조합 반영 — 기본 시드와 다른 것만 upsert.
+  // 개별 실패는 치명적이지 않음(설정 화면에서 언제든 재조정 가능) → 워크스페이스 생성은 성공으로 처리.
+  if (modules && modules.length > 0) {
+    const validKeys = new Set<string>(ALL_MODULE_KEYS);
+    await Promise.all(
+      modules
+        .filter((m) => validKeys.has(m.key))
+        .map((m) =>
+          supabase.rpc('set_workspace_module', { p_key: m.key, p_enabled: m.enabled }),
+        ),
+    );
   }
 
   return { success: true, workspaceId: data as string };

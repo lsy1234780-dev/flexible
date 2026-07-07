@@ -21,8 +21,8 @@ export async function middleware(request: NextRequest) {
     },
   );
 
-  // 미리보기 모드: 인증 우회
-  if (process.env.PREVIEW_MODE === 'true') {
+  // 미리보기 모드: 인증 우회 — 프로덕션 배포에서는 env가 잘못 설정되어도 절대 우회되지 않는다
+  if (process.env.PREVIEW_MODE === 'true' && process.env.VERCEL_ENV !== 'production') {
     return response;
   }
 
@@ -32,7 +32,7 @@ export async function middleware(request: NextRequest) {
 
   const user = claimsData?.claims ? { id: claimsData.claims.sub, email: claimsData.claims.email, user_metadata: claimsData.claims.user_metadata, app_metadata: claimsData.claims.app_metadata } : null;
 
-  const publicPaths = ['/login', '/forgot-password', '/reset-password', '/auth/callback'];
+  const publicPaths = ['/login', '/forgot-password', '/reset-password', '/auth/callback', '/join', '/signup'];
   const isPublic = publicPaths.some((p) => request.nextUrl.pathname.startsWith(p));
 
   if (!user && !isPublic) {

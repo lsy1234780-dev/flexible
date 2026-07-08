@@ -3,10 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Package, ClipboardList, Building2, FileText, ShoppingCart,
-  Tags, FolderTree, Menu, X, ChevronDown, ExternalLink, ClipboardCheck, Settings, Wrench, Layers,
-  PanelLeftClose, PanelLeftOpen, LogOut, PackageCheck, Warehouse, Search, ShieldCheck, TrendingUp, Target, MessageSquare, LayoutDashboard, Inbox,
-  Clock, CalendarDays, Users, SlidersHorizontal, Receipt, Banknote,
+  Menu, X, ChevronDown, Settings, Blocks,
+  PanelLeftClose, PanelLeftOpen, LogOut, Search,
 } from 'lucide-react';
 import InventoryFinderModal from '@/components/InventoryFinderModal';
 import { useMemo, useState, useTransition } from 'react';
@@ -14,98 +12,11 @@ import { cn } from '@/lib/utils';
 import { signOut } from '@/actions/auth';
 import { canAccessMenu } from '@/lib/roles';
 import { isMenuModuleEnabled } from '@/lib/modules';
+import { allNavGroups } from '@/lib/navGroups';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { useGlobalSearch } from '@/lib/globalSearchStore';
 import type { UserRole, MenuAccessRule } from '@/lib/roles';
-
-const LOGISTICS_URL = process.env.NEXT_PUBLIC_LOGISTICS_URL ?? 'http://localhost:3003';
-
-interface NavItem {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ size?: number }>;
-  exact?: boolean;
-  external?: boolean;
-  managerOnly?: 'attendance' | 'expense'; // 해당 모듈 관리자(명시 부여)에게만 노출
-}
-
-interface NavGroup {
-  label: string;
-  items: NavItem[];
-}
-
-const allNavGroups: NavGroup[] = [
-  {
-    label: '홈',
-    items: [
-      { href: '/inbox', label: '인박스', icon: Inbox, exact: true },
-      { href: '/dashboard', label: '대시보드', icon: LayoutDashboard, exact: true },
-    ],
-  },
-  {
-    label: '상품관리',
-    items: [
-      { href: '/products', label: '제품 관리', icon: Package },
-      { href: '/categories', label: '카테고리', icon: FolderTree },
-      { href: '/inventory', label: '재고 현황', icon: ClipboardList, exact: true },
-      { href: '/lots', label: 'LOT 관리', icon: Layers },
-    ],
-  },
-  {
-    label: '영업관리',
-    items: [
-      { href: '/companies', label: '거래처 관리', icon: Building2 },
-      { href: '/receiving', label: '발주 관리', icon: ClipboardCheck },
-      { href: '/orders', label: '수주 관리', icon: ShoppingCart },
-      { href: '/quotations', label: '견적서', icon: FileText },
-    ],
-  },
-  {
-    label: '협업',
-    items: [
-      { href: '/chat', label: '채팅', icon: MessageSquare },
-    ],
-  },
-  {
-    label: '고객관계',
-    items: [
-      { href: '/deals', label: '영업 파이프라인', icon: Target },
-      { href: '/warranty', label: '출고현황', icon: ShieldCheck },
-      { href: '/as', label: 'A/S 관리', icon: Wrench },
-    ],
-  },
-  {
-    label: '물류관리',
-    items: [
-      { href: '/warehouses', label: '창고 관리', icon: Warehouse },
-      { href: '/serials', label: '시리얼 관리', icon: Tags },
-      { href: '/receiving-orders', label: '입고 작업', icon: PackageCheck },
-      { href: LOGISTICS_URL, label: '물류 앱 열기', icon: ExternalLink, external: true },
-    ],
-  },
-  {
-    label: '근태',
-    items: [
-      { href: '/attendance', label: '내 근태', icon: Clock, exact: true },
-      { href: '/attendance/leaves', label: '휴가', icon: CalendarDays, exact: true },
-      { href: '/attendance/team', label: '팀 현황', icon: Users, exact: true, managerOnly: 'attendance' },
-      { href: '/attendance/policy', label: '근태 설정', icon: SlidersHorizontal, exact: true, managerOnly: 'attendance' },
-    ],
-  },
-  {
-    label: '경비',
-    items: [
-      { href: '/expenses', label: '내 경비', icon: Receipt },
-      { href: '/expenses/finance', label: '정산 관리', icon: Banknote, exact: true, managerOnly: 'expense' },
-    ],
-  },
-  {
-    label: '경영지원',
-    items: [
-      { href: '/profit-loss', label: '손익계산서', icon: TrendingUp },
-    ],
-  },
-];
+import type { NavGroup } from '@/lib/navGroups';
 
 interface Props {
   role: UserRole;
@@ -340,7 +251,12 @@ export default function Sidebar({ role, menuRules, departmentLabels = {}, positi
     <>
       {/* 모바일 상단바 */}
       <div className="fixed top-0 left-0 right-0 z-40 flex h-14 items-center justify-between border-b bg-white px-4 md:hidden">
-        <span className="font-bold text-gray-900">ERP 어드민</span>
+        <span className="flex items-center gap-1.5 font-bold text-gray-900">
+          <span className="grid h-6 w-6 place-items-center rounded-md bg-gradient-to-br from-blue-600 to-violet-500">
+            <Blocks className="h-3.5 w-3.5 text-white" />
+          </span>
+          Flexible
+        </span>
         <div className="flex items-center gap-1">
           <button onClick={() => openGlobalSearch(true)} className="p-1 text-gray-600">
             <Search size={20} />
@@ -373,7 +289,14 @@ export default function Sidebar({ role, menuRules, departmentLabels = {}, positi
         sidebarCollapsed ? 'md:w-16' : 'md:w-52',
       )}>
         <div className="flex h-14 items-center justify-between px-4 border-b">
-          {!sidebarCollapsed && <span className="font-bold text-gray-900">ERP 어드민</span>}
+          {!sidebarCollapsed && (
+            <span className="flex items-center gap-1.5 font-bold text-gray-900">
+              <span className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-blue-600 to-violet-500">
+                <Blocks className="h-4 w-4 text-white" />
+              </span>
+              Flexible
+            </span>
+          )}
           <Tooltip>
             <TooltipTrigger asChild>
               <button

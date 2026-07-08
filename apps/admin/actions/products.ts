@@ -201,7 +201,10 @@ export async function updateProduct(id: string, formData: FormData) {
 
 // 제품 목록 (물류용: 가격 제외)
 export async function getProductsForSerials() {
-  if (process.env.PREVIEW_MODE === 'true') return [];
+  if (process.env.PREVIEW_MODE === 'true') {
+    const { getPreviewSerialProducts } = await import('@/lib/previewData');
+    return getPreviewSerialProducts();
+  }
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('products')

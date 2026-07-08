@@ -13,7 +13,10 @@ function generateLotNumber(manufacturedAt: string): string {
 // ── LOT 목록 조회 ──
 
 export async function getLots(productId?: string) {
-  if (process.env.PREVIEW_MODE === 'true') return [];
+  if (process.env.PREVIEW_MODE === 'true') {
+    const { PREVIEW_LOTS } = await import('@/lib/previewData');
+    return productId ? PREVIEW_LOTS.filter((l) => l.product_id === productId) : PREVIEW_LOTS;
+  }
   const supabase = await createClient();
 
   let query = supabase

@@ -8,6 +8,10 @@ import { getChildType } from '@/lib/warehouseUtils';
 // ── 창고 목록 조회 ──
 
 export async function getWarehouses() {
+  if (process.env.PREVIEW_MODE === 'true') {
+    const { PREVIEW_WAREHOUSES } = await import('@/lib/previewData');
+    return PREVIEW_WAREHOUSES;
+  }
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -171,6 +175,7 @@ export async function deleteWarehouse(id: string) {
 // ── 로케이션 트리 조회 ──
 
 export async function getLocationTree(warehouseId: string) {
+  if (process.env.PREVIEW_MODE === 'true') return [];
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -215,6 +220,7 @@ function buildTree(
 // ── 로케이션 플랫 목록 조회 ──
 
 export async function getLocations(warehouseId: string) {
+  if (process.env.PREVIEW_MODE === 'true') return [];
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -379,6 +385,7 @@ export async function getInventoryAtLocation(
   warehouseId: string,
   locationId?: string | null,
 ) {
+  if (process.env.PREVIEW_MODE === 'true') return [];
   const supabase = await createClient();
 
   let query = supabase
@@ -405,6 +412,7 @@ export async function getWarehouseInventory(
   warehouseId: string,
   locationId?: string | null,
 ) {
+  if (process.env.PREVIEW_MODE === 'true') return [];
   const supabase = await createClient();
 
   let query = supabase
@@ -675,6 +683,7 @@ export async function getLocationsForSelect(warehouseId: string) {
 // ── 로케이션 카운트 (창고별) ──
 
 export async function getLocationCounts(warehouseId: string) {
+  if (process.env.PREVIEW_MODE === 'true') return {};
   const supabase = await createClient();
 
   const { data, error } = await supabase

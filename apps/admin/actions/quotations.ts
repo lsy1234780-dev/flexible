@@ -12,7 +12,10 @@ const B2B_PORTAL_URL = process.env.NEXT_PUBLIC_B2B_PORTAL_URL ?? 'http://localho
 const BRAND_NAME = process.env.EMAIL_BRAND_NAME ?? 'B2B 협력사 포털';
 
 export async function getQuotations() {
-  if (process.env.PREVIEW_MODE === 'true') return [];
+  if (process.env.PREVIEW_MODE === 'true') {
+    const { PREVIEW_QUOTATIONS } = await import('@/lib/previewData');
+    return PREVIEW_QUOTATIONS;
+  }
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('quotations')

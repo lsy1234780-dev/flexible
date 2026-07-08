@@ -9,7 +9,10 @@ import dayjs from 'dayjs';
 // ── 입고지시서 목록 조회 ──
 
 export async function getReceivingOrders() {
-  if (process.env.PREVIEW_MODE === 'true') return [];
+  if (process.env.PREVIEW_MODE === 'true') {
+    const { PREVIEW_RECEIVING_ORDERS } = await import('@/lib/previewData');
+    return PREVIEW_RECEIVING_ORDERS;
+  }
   const supabase = await createClient();
 
   const { data, error } = await supabase

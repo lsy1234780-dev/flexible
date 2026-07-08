@@ -8,7 +8,10 @@ import { revalidatePath } from 'next/cache';
 // ─── 파이프라인 단계 (워크스페이스별 편집 — "우리 입맛") ───
 
 export async function getDealStages() {
-  if (process.env.PREVIEW_MODE === 'true') return [];
+  if (process.env.PREVIEW_MODE === 'true') {
+    const { PREVIEW_DEAL_STAGES } = await import('@/lib/previewData');
+    return PREVIEW_DEAL_STAGES;
+  }
   const supabase = await createClient();
 
   let { data, error } = await supabase
@@ -110,7 +113,10 @@ export async function deleteDealStage(id: string) {
 // ─── 딜 (영업 기회) ───
 
 export async function getDeals() {
-  if (process.env.PREVIEW_MODE === 'true') return [];
+  if (process.env.PREVIEW_MODE === 'true') {
+    const { PREVIEW_DEALS } = await import('@/lib/previewData');
+    return PREVIEW_DEALS;
+  }
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('deals')
@@ -248,7 +254,10 @@ export async function deleteDeal(id: string) {
 // ─── 매출 예측 (CRM 고유 가치) ───
 // 열린 딜의 단계별 합계 + 가중 예측(단계 진행도 비례).
 export async function getDealForecast() {
-  if (process.env.PREVIEW_MODE === 'true') return { byStage: [], openTotal: 0, wonTotal: 0 };
+  if (process.env.PREVIEW_MODE === 'true') {
+    const { PREVIEW_DEAL_FORECAST } = await import('@/lib/previewData');
+    return PREVIEW_DEAL_FORECAST;
+  }
   const supabase = await createClient();
 
   const [{ data: deals }, { data: stages }] = await Promise.all([

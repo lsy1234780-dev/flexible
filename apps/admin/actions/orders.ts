@@ -14,7 +14,7 @@ const BRAND_NAME = process.env.EMAIL_BRAND_NAME ?? 'B2B 협력사 포털';
 // ── 조회 ──
 
 export async function getAdminOrders() {
-  if (process.env.PREVIEW_MODE === 'true') return [];
+  if (process.env.PREVIEW_MODE === 'true') return Object.values(PREVIEW_ORDERS);
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('orders')

@@ -84,6 +84,7 @@ export async function isExpenseManagerAction(): Promise<boolean> {
 }
 
 export async function getExpenseManagers(): Promise<ExpenseManagerRow[]> {
+  if (process.env.PREVIEW_MODE === 'true') return [];
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('expense_managers')

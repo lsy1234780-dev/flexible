@@ -101,7 +101,10 @@ export interface UpdatePurchaseOrderInput {
 // ── 목록 조회 ──
 
 export async function getPurchaseOrders() {
-  if (process.env.PREVIEW_MODE === 'true') return [];
+  if (process.env.PREVIEW_MODE === 'true') {
+    const { PREVIEW_PURCHASE_ORDERS } = await import('@/lib/previewData');
+    return PREVIEW_PURCHASE_ORDERS as unknown as PurchaseOrder[];
+  }
   const supabase = await createClient();
 
   const { data, error } = await supabase

@@ -83,6 +83,7 @@ export async function isAttendanceManagerAction(): Promise<boolean> {
 }
 
 export async function getAttendanceManagers(): Promise<AttendanceManager[]> {
+  if (process.env.PREVIEW_MODE === 'true') return [];
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('attendance_managers')

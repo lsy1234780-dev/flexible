@@ -5,7 +5,10 @@ import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { revalidatePath } from 'next/cache';
 
 export async function getCategories() {
-  if (process.env.PREVIEW_MODE === 'true') return [];
+  if (process.env.PREVIEW_MODE === 'true') {
+    const { PREVIEW_CATEGORIES } = await import('@/lib/previewData');
+    return PREVIEW_CATEGORIES;
+  }
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('categories')
@@ -18,7 +21,10 @@ export async function getCategories() {
 }
 
 export async function getCategoryProductCounts(): Promise<Record<string, number>> {
-  if (process.env.PREVIEW_MODE === 'true') return {};
+  if (process.env.PREVIEW_MODE === 'true') {
+    const { PREVIEW_CATEGORY_PRODUCT_COUNTS } = await import('@/lib/previewData');
+    return PREVIEW_CATEGORY_PRODUCT_COUNTS;
+  }
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('products')

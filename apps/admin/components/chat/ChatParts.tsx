@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import dayjs from 'dayjs';
 import {
   Send, AtSign, X, SmilePlus, MessageSquare,
-  ChevronLeft, Pencil, Trash2, Paperclip, FileText, Download, Share2,
+  ChevronLeft, Paperclip, FileText, Download, Share2,
   ExternalLink, Loader2, Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -91,18 +91,16 @@ export interface MessageItemProps {
   meName: string;
   onReact: (messageId: string, emoji: string) => void;
   onJump: (entityType: string, entityId: string) => void;
-  onEdit?: (messageId: string, body: string) => Promise<boolean>;
-  onDelete?: (messageId: string) => void;
   onOpenThread?: () => void;
   onForward?: (msg: Message, rect: DOMRect) => void;
   replyCount?: number;
   presence?: PresenceInfo | null; // 작성자의 부재 정보 (휴가/자리비움) — 있으면 이름 옆 배지
 }
 
-export function MessageItem({ m, meId, meName, onReact, onJump, onEdit, onDelete, onOpenThread, onForward, replyCount = 0, presence = null }: MessageItemProps) {
+// 업무 기록 불변 원칙: 메시지 수정/삭제는 지원하지 않는다 (097).
+// 한 번 보낸 메시지는 업무 근거로 남는다 — 오타는 정정 메시지로.
+export function MessageItem({ m, meId, meName, onReact, onJump, onOpenThread, onForward, replyCount = 0, presence = null }: MessageItemProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(m.body);
   const mine = m.author_id === meId;
 
   // 시스템(ERP 봇) 메시지 — 상태 전이 자동 기록. 회색 한 줄로 컴팩트하게.
@@ -114,12 +112,6 @@ export function MessageItem({ m, meId, meName, onReact, onJump, onEdit, onDelete
         <span className="ml-auto flex-shrink-0 text-[10px] text-gray-300">{dayjs(m.created_at).format('MM.DD HH:mm')}</span>
       </div>
     );
-  }
-
-  async function saveEdit() {
-    if (!onEdit) return;
-    const ok = await onEdit(m.id, draft);
-    if (ok) setEditing(false);
   }
 
   const agg = new Map<string, { count: number; mine: boolean }>();
@@ -141,16 +133,6 @@ export function MessageItem({ m, meId, meName, onReact, onJump, onEdit, onDelete
           <button onClick={() => setPickerOpen((v) => !v)} className="p-1 text-gray-400 hover:text-gray-700" title="반응 추가">
             <SmilePlus size={14} />
           </button>
-          {mine && onEdit && (
-            <button onClick={() => { setDraft(m.body); setEditing(true); }} className="p-1 text-gray-400 hover:text-gray-700" title="수정">
-              <Pencil size={13} />
-            </button>
-          )}
-          {mine && onDelete && (
-            <button onClick={() => onDelete(m.id)} className="p-1 text-gray-400 hover:text-red-600" title="삭제">
-              <Trash2 size={13} />
-            </button>
-          )}
           {onForward && (
             <button
               onClick={(e) => onForward(m, (e.currentTarget as HTMLButtonElement).getBoundingClientRect())}
@@ -163,28 +145,7 @@ export function MessageItem({ m, meId, meName, onReact, onJump, onEdit, onDelete
         </span>
       </div>
 
-      {editing ? (
-        <div className="mt-1">
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(); }
-              if (e.key === 'Escape') setEditing(false);
-            }}
-            rows={2}
-            autoFocus
-            className="w-full resize-none rounded-md border px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-gray-400"
-          />
-          <div className="mt-1 flex items-center gap-2 text-xs">
-            <button onClick={saveEdit} className="rounded bg-gray-900 px-2 py-1 text-white hover:bg-gray-800">저장</button>
-            <button onClick={() => setEditing(false)} className="text-gray-500 hover:text-gray-700">취소</button>
-            <span className="text-gray-400">Enter 저장 · Esc 취소</span>
-          </div>
-        </div>
-      ) : (
-        m.body && <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">{m.body}</p>
-      )}
+      {m.body && <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">{m.body}</p>}
 
       {m.message_attachments?.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-2">
@@ -262,9 +223,11 @@ export interface ComposerProps {
   onSend: (body: string, mentions: Mention[], attachments: AttachmentInput[]) => Promise<void> | void;
   quotedMessage?: QuotedMessage | null;
   onDismissQuote?: () => void;
+  /** 입력 중 이벤트 — 타이핑 인디케이터 브로드캐스트용 (스로틀은 호출부 책임) */
+  onTyping?: () => void;
 }
 
-export function Composer({ channelId, placeholder, onSend, quotedMessage, onDismissQuote }: ComposerProps) {
+export function Composer({ channelId, placeholder, onSend, quotedMessage, onDismissQuote, onTyping }: ComposerProps) {
   const [body, setBody] = useState('');
   const [pending, setPending] = useState<Mention[]>([]);
   const [files, setFiles] = useState<AttachmentInput[]>([]);
@@ -392,6 +355,7 @@ export function Composer({ channelId, placeholder, onSend, quotedMessage, onDism
   function handleBodyChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const val = e.target.value;
     setBody(val);
+    if (val.trim()) onTyping?.();
 
     const cursor = e.target.selectionStart ?? val.length;
     const before = val.slice(0, cursor);

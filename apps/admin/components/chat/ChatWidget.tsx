@@ -18,8 +18,8 @@ import { useChatWidget } from '@/lib/chatWidgetStore';
 import { MessageItem, Composer, type Message } from '@/components/chat/ChatParts';
 import { entityHref } from '@/lib/entityLink';
 import {
-  getChannels, getMessages, sendMessage, markChannelRead, toggleReaction,
-  editMessage, deleteMessage, getMyMentions,
+  getChannels, getMessagesPage, getMessageById, sendMessage, markChannelRead, toggleReaction,
+  getMyMentions,
 } from '@/actions/chat';
 import { getCurrentUser } from '@/actions/auth';
 import { PresenceBadge, MyStatusControl } from '@/components/chat/Presence';
@@ -53,16 +53,44 @@ export default function ChatWidget() {
   const threadReplies = threadParent ? messages.filter((m) => m.reply_to === threadParent) : [];
   const authorPresence = (m: Message) => (m.author_id ? presence[m.author_id] ?? null : null);
 
+  const messageIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => { messageIdsRef.current = new Set(messages.map((m) => m.id)); }, [messages]);
+
   const loadChannels = useCallback(async () => {
     const rows = (await getChannels()) as Ch[];
     setChannels(rows);
     return rows;
   }, []);
   const loadMessages = useCallback(async (id: string) => {
-    setMessages((await getMessages(id) ?? []) as Message[]);
+    const page = await getMessagesPage(id); // 최신 50개 (위젯은 무한 스크롤 없이 최근 대화만)
+    setMessages(page.messages as unknown as Message[]);
   }, []);
   const loadMentions = useCallback(async () => {
     try { setUnreadMentions((await getMyMentions()).filter((m) => m.is_unread).length); } catch { /* noop */ }
+  }, []);
+
+  // 배지 갱신 디바운스 — 메시지 폭주 시에도 한 번만
+  const mentionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadMentionsDebounced = useCallback(() => {
+    if (mentionTimer.current) clearTimeout(mentionTimer.current);
+    mentionTimer.current = setTimeout(loadMentions, 700);
+  }, [loadMentions]);
+  useEffect(() => () => { if (mentionTimer.current) clearTimeout(mentionTimer.current); }, []);
+
+  // 단건 반영 — 전체 재조회 없음 (upsert가 id 중복 제거)
+  const patchMessage = useCallback(async (id: string) => {
+    try {
+      const row = await getMessageById(id);
+      if (row) {
+        setMessages((prev) => {
+          const i = prev.findIndex((m) => m.id === row.id);
+          if (i >= 0) { const next = [...prev]; next[i] = row as unknown as Message; return next; }
+          return [...prev, row as unknown as Message];
+        });
+      } else {
+        setMessages((prev) => prev.filter((m) => m.id !== id));
+      }
+    } catch { /* noop */ }
   }, []);
 
   // 최초: 나 + 멘션 배지 (닫혀 있어도 배지는 보여야 함)
@@ -72,23 +100,43 @@ export default function ChatWidget() {
     loadMentions();
   }, [chatEnabled, loadMentions]);
 
-  // 멘션/메시지 배지 realtime (위젯 닫혀 있어도 갱신)
+  // realtime: 배지(디바운스) + 열려 있는 활성 채널만 단건 반영
   useEffect(() => {
     if (!chatEnabled) return;
     const supabase = createClient();
-    const rt = supabase
-      .channel('chat-widget-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
-        loadMentions();
-        const row = (payload.new ?? payload.old) as { channel_id?: string } | null;
-        if (open && activeId && row?.channel_id === activeId) { loadMessages(activeId); markChannelRead(activeId); }
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'message_reactions' }, () => {
-        if (open && activeId) loadMessages(activeId);
-      })
-      .subscribe();
+    const rt = supabase.channel(`chat-widget-rt-${open && activeId ? activeId : 'closed'}`);
+    if (open && activeId) {
+      rt.on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${activeId}` },
+        (payload) => {
+          const id = (payload.new as { id?: string })?.id;
+          if (id) { patchMessage(id); markChannelRead(activeId); }
+        })
+        .on('postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'messages', filter: `channel_id=eq.${activeId}` },
+          (payload) => {
+            const id = (payload.new as { id?: string })?.id;
+            if (id) patchMessage(id);
+          })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'message_reactions' }, (payload) => {
+          const mid = ((payload.new ?? payload.old) as { message_id?: string } | null)?.message_id;
+          if (mid && messageIdsRef.current.has(mid)) patchMessage(mid);
+        });
+    }
+    let lost = false; // 재연결 시 놓친 메시지 복구
+    rt.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => {
+      loadMentionsDebounced();
+    }).subscribe((status) => {
+      if (status === 'SUBSCRIBED' && lost) {
+        lost = false;
+        if (open && activeId) loadMessages(activeId); // 위젯은 최신 50개만 보여주므로 재로드로 충분
+        loadMentionsDebounced();
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        lost = true;
+      }
+    });
     return () => { supabase.removeChannel(rt); };
-  }, [chatEnabled, open, activeId, loadMentions, loadMessages]);
+  }, [chatEnabled, open, activeId, loadMentionsDebounced, patchMessage, loadMessages]);
 
   // 위젯 열리면 채널 로드 + 활성 채널 결정 (store.channelId 우선 = 공유로 연 경우)
   useEffect(() => {
@@ -108,10 +156,12 @@ export default function ChatWidget() {
     markChannelRead(activeId).then(loadMentions);
   }, [open, activeId, loadMessages, loadMentions]);
 
+  // 새 메시지(개수 변화)일 때만 바닥으로 — 반응 등 단건 패치에는 스크롤 안 움직임
+  const messageCount = messages.length;
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     threadBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messageCount]);
 
   function jump(type: string, id: string) {
     const href = entityHref(type, id);
@@ -122,33 +172,20 @@ export default function ChatWidget() {
     if (!activeId) return;
     const r = await sendMessage(activeId, body, mentions, null, attachments);
     if (r?.error) { toast.error(r.error); return; }
-    loadMessages(activeId);
+    if (r.id) patchMessage(r.id);
   }
   // 스레드 패널 작성 — 항상 그 스레드에 답글 (075/076 트리거가 부모의 레코드 멘션을 자동 상속)
   async function handleThreadSend(body: string, mentions: { entity_type: string; entity_id: string; label: string }[], attachments: import('@/actions/chat').AttachmentInput[]) {
     if (!activeId || !threadParent) return;
     const r = await sendMessage(activeId, body, mentions, threadParent, attachments);
     if (r?.error) { toast.error(r.error); return; }
-    loadMessages(activeId);
+    if (r.id) patchMessage(r.id);
   }
   async function handleReact(id: string, emoji: string) {
     const r = await toggleReaction(id, emoji);
     if (r?.error) { toast.error(r.error); return; }
-    if (activeId) loadMessages(activeId);
+    patchMessage(id);
   }
-  async function handleEdit(id: string, body: string): Promise<boolean> {
-    const r = await editMessage(id, body);
-    if (r?.error) { toast.error(r.error); return false; }
-    if (activeId) loadMessages(activeId);
-    return true;
-  }
-  async function handleDelete(id: string) {
-    if (!confirm('이 메시지를 삭제할까요?')) return;
-    const r = await deleteMessage(id);
-    if (r?.error) { toast.error(r.error); return; }
-    if (activeId) loadMessages(activeId);
-  }
-
   // chat 모듈 꺼졌거나 채팅 전체화면(/chat)에서는 위젯 숨김
   if (!chatEnabled || pathname.startsWith('/chat')) return null;
 
@@ -216,8 +253,6 @@ export default function ChatWidget() {
                   meId={me.id}
                   meName={me.name}
                   onReact={handleReact}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
                   onJump={jump}
                   onOpenThread={() => setThreadParent(m.id)}
                   replyCount={replyCount(m.id)}
@@ -251,7 +286,7 @@ export default function ChatWidget() {
                   </button>
                 </div>
                 <div className="w-80 flex-1 overflow-y-auto px-3 py-3 space-y-3">
-                  <MessageItem m={threadMsg} meId={me.id} meName={me.name} onReact={handleReact} onEdit={handleEdit} onDelete={handleDelete} onJump={jump} presence={authorPresence(threadMsg)} />
+                  <MessageItem m={threadMsg} meId={me.id} meName={me.name} onReact={handleReact} onJump={jump} presence={authorPresence(threadMsg)} />
                   {threadReplies.length > 0 && (
                     <div className="flex items-center gap-2 text-[11px] text-gray-400">
                       <span>{threadReplies.length}개 답글</span>
@@ -260,7 +295,7 @@ export default function ChatWidget() {
                   )}
                   {threadReplies.map((r) => (
                     <div key={r.id} className="border-l-2 border-gray-100 pl-3">
-                      <MessageItem m={r} meId={me.id} meName={me.name} onReact={handleReact} onEdit={handleEdit} onDelete={handleDelete} onJump={jump} presence={authorPresence(r)} />
+                      <MessageItem m={r} meId={me.id} meName={me.name} onReact={handleReact} onJump={jump} presence={authorPresence(r)} />
                     </div>
                   ))}
                   <div ref={threadBottomRef} />

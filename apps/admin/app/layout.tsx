@@ -1,13 +1,20 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Geist } from 'next/font/google';
 import './globals.css';
 import { Toaster } from '@/components/ui/sonner';
+import SwRegister from '@/components/SwRegister';
 
 const geist = Geist({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: 'ERP 어드민',
   description: 'OO산업 내부 어드민',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: { capable: true, title: 'Flexible', statusBarStyle: 'default' },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#2563eb',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -19,6 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={geist.className} suppressHydrationWarning>
         {children}
         <Toaster richColors />
+        <SwRegister />
       </body>
     </html>
   );

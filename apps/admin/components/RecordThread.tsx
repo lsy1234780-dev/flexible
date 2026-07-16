@@ -24,7 +24,7 @@ import { entityHref } from '@/lib/entityLink';
 import { MessageItem, Composer, type Message } from '@/components/chat/ChatParts';
 import {
   getRecordThread, sendRecordMessage, getRecordMentions, markChannelRead,
-  toggleReaction, editMessage, deleteMessage,
+  toggleReaction,
   type RecordMention, type MentionInput,
 } from '@/actions/chat';
 import type { AttachmentInput } from '@/actions/chat';
@@ -115,20 +115,6 @@ export default function RecordThread({ entityType, entityId, entityLabel, classN
     await loadThread();
   }
 
-  async function handleEdit(messageId: string, body: string) {
-    const res = await editMessage(messageId, body);
-    if (res?.error) { toast.error(res.error); return false; }
-    await loadThread();
-    return true;
-  }
-
-  async function handleDelete(messageId: string) {
-    if (!confirm('메시지를 삭제하시겠습니까?')) return;
-    const res = await deleteMessage(messageId);
-    if (res?.error) { toast.error(res.error); return; }
-    await loadThread();
-  }
-
   function jump(type: string, id: string) {
     const href = entityHref(type, id);
     if (href && href !== '#') router.push(href);
@@ -164,8 +150,6 @@ export default function RecordThread({ entityType, entityId, entityLabel, classN
                 meName={me.name}
                 onReact={handleReact}
                 onJump={jump}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
               />
             ) : (
               // 역링크 항목 — 다른 채널 대화의 일부라 맥락이 없으므로 얇은 카드 + 채널 태그로 구분

@@ -327,6 +327,11 @@ SUPABASE_SERVICE_ROLE_KEY=      # 서버사이드 전용, 클라이언트 노출
 RESEND_API_KEY=
 LINE_CHANNEL_ACCESS_TOKEN=
 
+# 웹푸시 (사람이 직접 발급: npx web-push generate-vapid-keys — 없으면 푸시만 조용히 비활성)
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=              # 서버사이드 전용, 클라이언트 노출 금지
+VAPID_SUBJECT=                  # 선택 (mailto:주소, 기본값 있음)
+
 # 앱
 NEXT_PUBLIC_APP_URL=
 
@@ -558,8 +563,8 @@ feat(admin): 입고지시서 UI 페이지 구현
 
 `supabase/migrations/` 디렉토리에 순번대로 존재. 새 마이그레이션은 다음 번호로 작성:
 ```
-현재 마지막: 094_workspace_invites.sql
-다음 작성 시: 095_xxx.sql
+현재 마지막: 097_immutable_messages.sql
+다음 작성 시: 098_xxx.sql
 ```
 
 ---

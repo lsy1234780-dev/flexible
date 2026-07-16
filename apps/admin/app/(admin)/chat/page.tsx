@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getChannels } from '@/actions/chat';
 import { getCurrentUser } from '@/actions/auth';
 import { getEnabledModules } from '@/actions/modules';
+import { getCurrentWorkspaceId } from '@/lib/workspace';
 import ChatClient from './ChatClient';
 
 export const dynamic = 'force-dynamic';
@@ -16,13 +17,18 @@ export default async function ChatPage({
   if (!enabled.includes('chat')) redirect('/products');
 
   const { channel } = await searchParams;
-  const [channels, me] = await Promise.all([getChannels(), getCurrentUser()]);
+  const [channels, me, workspaceId] = await Promise.all([
+    getChannels(),
+    getCurrentUser(),
+    getCurrentWorkspaceId().catch(() => null),
+  ]);
   return (
     <ChatClient
       channels={channels as Channel[]}
       meId={me?.id ?? null}
       meName={me?.name ?? '나'}
       initialChannelId={channel ?? null}
+      workspaceId={workspaceId}
     />
   );
 }
@@ -34,4 +40,5 @@ export interface Channel {
   partner_id?: string | null;
   partner_name?: string | null;
   unread?: number;
+  muted?: boolean;
 }

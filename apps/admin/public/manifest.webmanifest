@@ -1,0 +1,15 @@
+{
+  "name": "Flexible",
+  "short_name": "Flexible",
+  "description": "필요한 모듈만 켜는 회사 워크스페이스 — 인박스·재고·수주·채팅·근태·경비",
+  "start_url": "/inbox",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

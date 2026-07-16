@@ -1,10 +1,12 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
+import { after } from 'next/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { getCurrentWorkspaceId } from '@/lib/workspace';
 import { getCurrentUser } from '@/actions/auth';
 import { getEnabledModules } from '@/actions/modules';
 import { entitiesForModules, getEntityDef } from '@/lib/moduleRegistry';
+import { sendPushToUsers } from '@/lib/push/webPush';
 
 export interface MentionInput {
   entity_type: string;
@@ -36,6 +38,59 @@ export async function getChannels() {
 export async function markChannelRead(channelId: string) {
   const supabase = await createClient();
   await supabase.rpc('mark_channel_read', { p_channel: channelId });
+}
+
+// 채널별 알림 끄기/켜기 — 푸시만 끄고 안읽음 표시는 유지
+export async function setChannelMuted(channelId: string, muted: boolean) {
+  if (process.env.PREVIEW_MODE === 'true') return { success: true };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('set_channel_muted', { p_channel: channelId, p_muted: muted });
+  if (error) return { error: error.message };
+  return { success: true };
+}
+
+// ─── 메시지 검색 (pg_trgm + ilike, RLS가 내가 볼 수 있는 메시지만 필터) ───
+
+export interface MessageSearchResult {
+  id: string;
+  channel_id: string;
+  body: string;
+  author_name: string | null;
+  created_at: string;
+  channel_name: string | null;
+  channel_kind: string | null;
+}
+
+export async function searchMessages(query: string, limit = 20): Promise<MessageSearchResult[]> {
+  if (process.env.PREVIEW_MODE === 'true') return [];
+  const q = query.trim();
+  if (q.length < 2) return [];
+  const supabase = await createClient();
+  // ilike 와일드카드 이스케이프 (%, _, \)
+  const escaped = q.replace(/[\\%_]/g, (c) => `\\${c}`);
+  const { data, error } = await supabase
+    .from('messages')
+    .select('id, channel_id, body, author_name, created_at, channels(name, kind)')
+    .ilike('body', `%${escaped}%`)
+    .is('deleted_at', null)
+    .not('channel_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+
+  type Row = {
+    id: string; channel_id: string; body: string; author_name: string | null; created_at: string;
+    channels: { name: string | null; kind: string | null } | null;
+  };
+  return ((data ?? []) as unknown as Row[]).map((r) => ({
+    id: r.id,
+    channel_id: r.channel_id,
+    body: r.body,
+    author_name: r.author_name,
+    created_at: r.created_at,
+    channel_name: r.channels?.name ?? null,
+    channel_kind: r.channels?.kind ?? null,
+  }));
 }
 
 // ─── 다이렉트 메시지 ───
@@ -175,16 +230,82 @@ export async function createChannel(name: string) {
 
 // ─── 메시지 ───
 
+const MESSAGE_COLUMNS =
+  'id, channel_id, author_id, author_name, body, is_system, created_at, edited_at, reply_to, message_mentions(entity_type, entity_id, label), message_reactions(emoji, user_id), message_attachments(id, storage_path, file_name, mime_type, size_bytes)';
+
+// 최신 N개 (오래된→최신 정렬로 반환).
+// 주의: desc로 떠서 뒤집는다 — asc+limit이면 "가장 오래된 N개"가 잡혀 최신 메시지가 안 보인다.
 export async function getMessages(channelId: string, limit = 100) {
   if (process.env.PREVIEW_MODE === 'true') return [];
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('messages')
-    .select('id, author_id, author_name, body, is_system, created_at, edited_at, reply_to, message_mentions(entity_type, entity_id, label), message_reactions(emoji, user_id), message_attachments(id, storage_path, file_name, mime_type, size_bytes)')
+    .select(MESSAGE_COLUMNS)
     .eq('channel_id', channelId)
     .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data ?? []).reverse();
+}
+
+// 커서 페이지네이션 — 무한 스크롤용. before(ISO created_at) 이전 메시지를 최신순으로 limit개.
+// 커서는 created_at: 같은 ms 충돌은 SMB 규모에서 사실상 없고, 있어도 스크롤 한 번 더로 복구된다.
+export interface MessagesPage {
+  messages: Awaited<ReturnType<typeof getMessages>>;
+  hasMore: boolean;
+}
+
+export async function getMessagesPage(
+  channelId: string,
+  before: string | null = null,
+  limit = 50,
+): Promise<MessagesPage> {
+  if (process.env.PREVIEW_MODE === 'true') return { messages: [], hasMore: false };
+  const supabase = await createClient();
+  let q = supabase
+    .from('messages')
+    .select(MESSAGE_COLUMNS)
+    .eq('channel_id', channelId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(limit + 1); // 한 개 더 떠서 hasMore 판정
+  if (before) q = q.lt('created_at', before);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  const rows = data ?? [];
+  const hasMore = rows.length > limit;
+  return { messages: rows.slice(0, limit).reverse(), hasMore };
+}
+
+// 재연결 백필 — after(ISO) 이후의 신규 메시지만 (오래된→최신).
+// 끊긴 사이의 편집/삭제까지는 못 잡지만(희귀), 핵심인 신규 메시지는 놓치지 않는다.
+export async function getMessagesSince(channelId: string, after: string, limit = 100) {
+  if (process.env.PREVIEW_MODE === 'true') return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('messages')
+    .select(MESSAGE_COLUMNS)
+    .eq('channel_id', channelId)
+    .is('deleted_at', null)
+    .gt('created_at', after)
     .order('created_at', { ascending: true })
     .limit(limit);
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+// 단건 조회 — realtime 이벤트 수신 시 그 메시지 하나만 다시 그린다(전체 재조회 제거).
+// 삭제됐으면 null → 호출부가 목록에서 제거.
+export async function getMessageById(messageId: string) {
+  if (process.env.PREVIEW_MODE === 'true') return null;
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('messages')
+    .select(MESSAGE_COLUMNS)
+    .eq('id', messageId)
+    .is('deleted_at', null)
+    .maybeSingle();
   if (error) throw new Error(error.message);
   return data;
 }
@@ -364,7 +485,82 @@ export async function sendMessage(
     );
     if (aErr) return { error: aErr.message };
   }
+
+  // 웹푸시 (응답 반환 후 실행 — 전송 지연 없음, 실패해도 무시)
+  after(() =>
+    notifyMessagePush({
+      channelId,
+      authorId: user.id as string,
+      authorName: me?.name ?? '사용자',
+      body: text,
+      mentionedUserIds: mentions.filter((m) => m.entity_type === 'user').map((m) => m.entity_id),
+    }),
+  );
+
   return { success: true, id: msg.id };
+}
+
+// 푸시 수신자 결정 + 발송: @유저 멘션 대상 + (DM이면) 상대방. 본인 제외.
+// admin client 사용: 채널 메타/멤버 조회는 발송용 서버 작업(응답에 노출 안 됨).
+async function notifyMessagePush(params: {
+  channelId: string;
+  authorId: string;
+  authorName: string;
+  body: string;
+  mentionedUserIds: string[];
+}) {
+  try {
+    const admin = createAdminClient();
+    const { data: channel } = await admin
+      .from('channels')
+      .select('id, name, kind')
+      .eq('id', params.channelId)
+      .maybeSingle();
+    if (!channel) return;
+
+    const targets = new Set(params.mentionedUserIds);
+    if (channel.kind === 'dm') {
+      const { data: members } = await admin
+        .from('channel_members')
+        .select('user_id')
+        .eq('channel_id', params.channelId);
+      for (const m of members ?? []) targets.add(m.user_id);
+    }
+    targets.delete(params.authorId);
+    if (targets.size === 0) return;
+
+    // 이 채널을 뮤트한 유저 제외 (096)
+    const { data: mutedRows } = await admin
+      .from('channel_members')
+      .select('user_id')
+      .eq('channel_id', params.channelId)
+      .eq('muted', true)
+      .in('user_id', [...targets]);
+    for (const r of mutedRows ?? []) targets.delete(r.user_id);
+    if (targets.size === 0) return;
+
+    // DND(알림 일시중지) 중인 유저 제외 (096)
+    const { data: dndRows } = await admin
+      .from('notification_settings')
+      .select('user_id')
+      .in('user_id', [...targets])
+      .gt('dnd_until', new Date().toISOString());
+    for (const r of dndRows ?? []) targets.delete(r.user_id);
+    if (targets.size === 0) return;
+
+    const where =
+      channel.kind === 'dm' ? 'DM' : channel.kind === 'record' ? (channel.name ?? '레코드') : `#${channel.name}`;
+    const bodyText = params.body.length > 120 ? `${params.body.slice(0, 120)}…` : params.body;
+
+    await sendPushToUsers([...targets], {
+      title: `${params.authorName} · ${where}`,
+      body: bodyText || '(첨부 파일)',
+      url: `/chat?channel=${params.channelId}`,
+      tag: params.channelId, // 같은 채널 알림은 겹쳐 표시
+    });
+  } catch {
+    // 부가 기능 — 실패 무시
+  }
 }
 
 // 파일 업로드 (서버에서 Storage로) → 첨부 메타데이터 반환
@@ -428,41 +624,9 @@ export async function uploadChatFile(formData: FormData) {
   return { success: true, attachment };
 }
 
-// ─── 메시지 수정 / 삭제 (작성자 본인만) ───
-
-export async function editMessage(messageId: string, body: string) {
-  const text = body.trim();
-  if (!text) return { error: '내용을 입력하세요' };
-  const supabase = await createClient();
-  const me = await getCurrentUser();
-  if (!me?.id) return { error: '로그인이 필요합니다' };
-
-  const { data, error } = await supabase
-    .from('messages')
-    .update({ body: text, edited_at: new Date().toISOString() })
-    .eq('id', messageId)
-    .eq('author_id', me.id) // 본인 메시지만
-    .select('id');
-  if (error) return { error: error.message };
-  if (!data || data.length === 0) return { error: '수정 권한이 없습니다' };
-  return { success: true };
-}
-
-export async function deleteMessage(messageId: string) {
-  const supabase = await createClient();
-  const me = await getCurrentUser();
-  if (!me?.id) return { error: '로그인이 필요합니다' };
-
-  const { data, error } = await supabase
-    .from('messages')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('id', messageId)
-    .eq('author_id', me.id)
-    .select('id');
-  if (error) return { error: error.message };
-  if (!data || data.length === 0) return { error: '삭제 권한이 없습니다' };
-  return { success: true };
-}
+// ─── 메시지 수정/삭제 없음 — 업무 기록 불변 원칙 (097) ───
+// 한 번 보낸 메시지는 업무 근거로 남는다(불리할 때 지우기 방지). 오타는 정정 메시지로.
+// RLS에서도 UPDATE/DELETE를 차단했으므로 API 직접 호출로도 불가능하다.
 
 // ─── 이모지 반응 (토글) ───
 

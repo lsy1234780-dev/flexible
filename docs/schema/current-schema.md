@@ -838,5 +838,12 @@ member_statuses (            -- 자리비움/외근 등 본인 설정 상태
 | 088 | attendance_reclock | attendance_records.session_start_at 추가 — 하루 안 재출근(퇴근 후 재복귀) 지원 |
 | 089 | attendance_type_minutes | attendance_records.type_minutes(jsonb) 추가 — 사무실/재택/외근 형태별 시간 개별 집계 |
 | 090 | overtime | 초과근무 사전 신청(시작~종료 시각) + approvals 동기화·가드 트리거 |
+| 091 | record_thread_privacy | 레코드 스레드 프라이버시 |
+| 092 | security_perf_hardening | 보안·성능 하드닝 |
+| 093 | get_user_email_ws_scope | 유저 이메일 조회 워크스페이스 스코프 |
+| 094 | workspace_invites | 워크스페이스 초대코드 |
+| 095 | chat_scale_push | 채팅 스케일(P0): message_reactions replica identity full(단건 realtime 패치용) + push_subscriptions(웹푸시 구독 — user_id/endpoint/p256dh/auth, 본인만 조회·삭제 RLS, 발송은 service role) |
+| 096 | chat_search_notify | 채팅 P1: pg_trgm+GIN(messages.body 부분일치 검색), channel_members.muted+set_channel_muted RPC(채널 뮤트), get_my_channels에 muted 반환 추가, notification_settings(유저 DND — dnd_until, own-row RLS) |
+| 097 | immutable_messages | **메시지 불변 원칙(제품 결정)**: messages_update/delete 정책 제거 + 권한 회수 — 수정/삭제 불가(본인 포함). 063의 "남의 메시지 수정 가능" RLS 구멍도 함께 봉인. 멘션·첨부도 사후 조작 차단. service_role만 예외(법적 요청용) |
 
-**다음 마이그레이션:** `091_xxx.sql`
+**다음 마이그레이션:** `098_xxx.sql`

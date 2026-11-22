@@ -87,3 +87,15 @@ export function isMenuModuleEnabled(href: string, enabledModules?: string[] | nu
   if (!moduleKey) return true;
   return enabledModules.includes(moduleKey);
 }
+
+// 페이지 경로가 속한 모듈 키 — 라우트 단위 게이팅(middleware)용.
+// 메뉴 href와 정확히 같거나 그 하위 경로(/deals/123, /quotations/new)면 해당 모듈.
+// 여러 개가 맞으면 가장 긴(구체적인) href를 우선한다. 매핑 없는 경로(/settings, /inbox 등 코어)는 null.
+export function moduleForPath(pathname: string): string | null {
+  let bestHref = '';
+  for (const href of Object.keys(MENU_MODULE_MAP)) {
+    const matches = pathname === href || pathname.startsWith(href + '/');
+    if (matches && href.length > bestHref.length) bestHref = href;
+  }
+  return bestHref ? MENU_MODULE_MAP[bestHref] : null;
+}

@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
+import { moduleForPath } from '@/lib/modules';
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -41,6 +42,25 @@ export async function middleware(request: NextRequest) {
 
   if (user && ['/login', '/forgot-password'].includes(request.nextUrl.pathname)) {
     return NextResponse.redirect(new URL('/products', request.url));
+  }
+
+  // 모듈 게이팅(라우트 단위): 꺼진 모듈의 페이지는 메뉴뿐 아니라 URL 직접 접근도 막는다.
+  // 페이지 이동(GET)만 대상 — 서버 액션(POST)은 다른 모듈 화면에서도 공유되므로 여기서 막지 않는다.
+  // 판정은 getEnabledModules와 동일: 현재 워크스페이스에 enabled=true 행이 있어야 켜진 것.
+  // 조회 오류 시에는 열어 둔다(fail-open) — 일시적 DB 오류로 업무 화면 전체가 잠기는 것을 방지.
+  const requiredModule = user && request.method === 'GET' ? moduleForPath(request.nextUrl.pathname) : null;
+  if (requiredModule) {
+    const { data, error } = await supabase
+      .from('workspace_modules')
+      .select('module_key')
+      .eq('module_key', requiredModule)
+      .eq('enabled', true)
+      .limit(1);
+    if (!error && (data ?? []).length === 0) {
+      const url = new URL('/module-disabled', request.url);
+      url.searchParams.set('module', requiredModule);
+      return NextResponse.redirect(url);
+    }
   }
 
   return response;

@@ -31,8 +31,17 @@ _credentials/
 # supabase cli
 supabase/.temp/
 
-# claude (로컬 설정만 제외, commands/settings.json은 커밋)
-.claude/settings.local.json
+# AI 도구 설정·내부 기획 문서 (로컬 전용)
+.claude/
+.mcp.json
+CLAUDE.md
+**/CLAUDE.md
+PLANNING.md
+claude_code_prompt.md
+*.docx
+/index.html
+/docs/
+supabase/schema_dump.sql
 design-preview-a.html
 design-preview-b.html
 design-preview-c.html
